@@ -1,0 +1,3076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Aria's Code</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body, #root { width:100%; height:100%; overflow:hidden; }
+  [data-game-lock] { touch-action:none; overscroll-behavior:none; -webkit-user-select:none; user-select:none; }
+</style>
+<script>
+  // Block scrolling/bouncing ONLY inside game screens (elements with data-game-lock)
+  document.addEventListener('touchmove', function(e) {
+    var el = e.target;
+    while (el && el !== document.body) {
+      if (el.hasAttribute && el.hasAttribute('data-game-lock')) { e.preventDefault(); return; }
+      el = el.parentElement;
+    }
+    // Not inside a game — allow normal scrolling
+  }, { passive: false });
+  document.addEventListener('touchstart', function(e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ─── constants ─── */
+const COLORS = { skyBlue:'#87CEEB', white:'#FFFFFF' };
+
+const NOTE_FREQS = {
+  C3:130.81,D3:146.83,E3:164.81,F3:174.61,G3:196.00,A3:220.00,B3:246.94,
+  C4:261.63,D4:293.66,E4:329.63,F4:349.23,G4:392.00,A4:440.00,B4:493.88,
+  C5:523.25,E5:659.25,G5:783.99
+};
+
+const PIANO_KEYS = [
+  {note:'C3'},{note:'D3'},{note:'E3'},{note:'F3'},{note:'G3'},{note:'A3'},{note:'B3'},
+  {note:'C4'},{note:'D4'},{note:'E4'},{note:'F4'},{note:'G4'},{note:'A4'},{note:'B4'},{note:'C5'}
+];
+
+const BLACK_KEYS_MAP = {
+  0:{note:'C#3',freq:138.59},1:{note:'D#3',freq:155.56},
+  3:{note:'F#3',freq:185.00},4:{note:'G#3',freq:207.65},5:{note:'A#3',freq:233.08},
+  7:{note:'C#4',freq:277.18},8:{note:'D#4',freq:311.13},
+  10:{note:'F#4',freq:369.99},11:{note:'G#4',freq:415.30},12:{note:'A#4',freq:466.16}
+};
+
+const KEY_COLORS = ['#FF6B6B','#FF9F43','#FECA57','#48DBFB','#0ABDE3','#5F6AFF','#A55EEA',
+  '#FF6B6B','#FF9F43','#FECA57','#48DBFB','#0ABDE3','#5F6AFF','#A55EEA','#FF6B6B'];
+
+const NUMBER_WORDS = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
+  'Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen','Twenty'];
+const NUMBER_COLORS = ['','#FF6B6B','#FF9F43','#FECA57','#48DBFB','#A55EEA','#FF69B4','#0ABDE3',
+  '#5F6AFF','#FF6B6B','#FF9F43','#FECA57','#48DBFB','#A55EEA','#FF69B4','#0ABDE3','#5F6AFF',
+  '#FF6B6B','#FF9F43','#FECA57','#48DBFB'];
+const NUMBER_ICONS = ['','⭐','⭐','⭐','⭐','⭐','💖','💖','💖','💖','💖',
+  '🌸','🌸','🌸','🌸','🌸','🦋','🦋','🦋','🦋','🦋'];
+
+/* ─── Audio helper ─── */
+let _audioCtx = null;
+function getAudioContext() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
+function playNote(freq, duration = 0.5, type = 'triangle') {
+  const ctx = getAudioContext();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.01);
+  gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.1);
+  gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + duration * 0.6);
+  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + duration);
+}
+
+function playPop() {
+  const ctx = getAudioContext();
+  const t = ctx.currentTime;
+  // Soft bass thump — bubbly "poof"
+  const bass = ctx.createOscillator(); bass.type = 'sine';
+  bass.frequency.setValueAtTime(250, t);
+  bass.frequency.exponentialRampToValueAtTime(100, t + 0.15);
+  const bg = ctx.createGain();
+  bg.gain.setValueAtTime(0.2, t);
+  bg.gain.linearRampToValueAtTime(0, t + 0.18);
+  bass.connect(bg); bg.connect(ctx.destination);
+  bass.start(t); bass.stop(t + 0.2);
+  // Cheerful ascending chime
+  const freq = 500 + Math.random() * 200;
+  const o1 = ctx.createOscillator(); o1.type = 'sine';
+  o1.frequency.setValueAtTime(freq, t + 0.02);
+  o1.frequency.linearRampToValueAtTime(freq * 1.4, t + 0.15);
+  const g1 = ctx.createGain();
+  g1.gain.setValueAtTime(0, t + 0.02);
+  g1.gain.linearRampToValueAtTime(0.22, t + 0.04);
+  g1.gain.linearRampToValueAtTime(0, t + 0.25);
+  o1.connect(g1); g1.connect(ctx.destination);
+  o1.start(t + 0.02); o1.stop(t + 0.27);
+  // Sparkle overtone
+  const o2 = ctx.createOscillator(); o2.type = 'sine';
+  o2.frequency.setValueAtTime(freq * 2.5, t + 0.04);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, t + 0.04);
+  g2.gain.linearRampToValueAtTime(0.1, t + 0.06);
+  g2.gain.linearRampToValueAtTime(0, t + 0.22);
+  o2.connect(g2); g2.connect(ctx.destination);
+  o2.start(t + 0.04); o2.stop(t + 0.24);
+}
+
+function playChime() {
+  const notes = [NOTE_FREQS.C5, NOTE_FREQS.E5, NOTE_FREQS.G5];
+  notes.forEach((f, i) => setTimeout(() => playNote(f, 0.3, 'sine'), i * 80));
+}
+
+let lullabyInterval = null;
+function startLullaby() {
+  if (lullabyInterval) return;
+  const melody = [NOTE_FREQS.C4, NOTE_FREQS.E4, NOTE_FREQS.G4, NOTE_FREQS.A4,
+    NOTE_FREQS.G4, NOTE_FREQS.E4, NOTE_FREQS.D4, NOTE_FREQS.C4];
+  let idx = 0;
+  function playNext() {
+    const ctx = getAudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = melody[idx % melody.length];
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.05);
+    gain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 0.3);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.9);
+    idx++;
+  }
+  playNext();
+  lullabyInterval = setInterval(playNext, 1000);
+}
+function stopLullaby() {
+  if (lullabyInterval) { clearInterval(lullabyInterval); lullabyInterval = null; }
+}
+
+function speakNumber(word) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const speak = () => {
+    const u = new SpeechSynthesisUtterance(word);
+    u.rate = 0.85; u.pitch = 1.2; u.volume = 1;
+    const voices = window.speechSynthesis.getVoices();
+    const english = voices.find(v => v.lang.startsWith('en') && v.name.includes('Female'))
+      || voices.find(v => v.lang.startsWith('en'))
+      || voices[0];
+    if (english) u.voice = english;
+    window.speechSynthesis.speak(u);
+  };
+  if (window.speechSynthesis.getVoices().length === 0) {
+    window.speechSynthesis.onvoiceschanged = () => { speak(); window.speechSynthesis.onvoiceschanged = null; };
+  } else {
+    speak();
+  }
+}
+
+/* ─── Inject global styles ─── */
+function InjectStyles() {
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.href = 'https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&family=Dancing+Script:wght@700&family=Baloo+2:wght@700;800&display=swap';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes gradientShift {
+        0%{background-position:0% 50%}25%{background-position:50% 0%}50%{background-position:100% 50%}75%{background-position:50% 100%}100%{background-position:0% 50%}
+      }
+      @keyframes sparkle {
+        0%,100%{opacity:0.2;transform:scale(0.6)}50%{opacity:1;transform:scale(1.2)}
+      }
+      @keyframes float {
+        0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}
+      }
+      @keyframes shimmerDrift {
+        0%{transform:translate(-100%,-100%) rotate(45deg)}100%{transform:translate(200%,200%) rotate(45deg)}
+      }
+      @keyframes titleEntrance {
+        0%{transform:scale(0.8);opacity:0}60%{transform:scale(1.05);opacity:1}100%{transform:scale(1);opacity:1}
+      }
+      @keyframes rainbowTrail1 {
+        0%{transform:translateX(-120%) translateY(60%) rotate(-25deg);opacity:0}
+        15%{opacity:0.6}
+        85%{opacity:0.6}
+        100%{transform:translateX(120%) translateY(-60%) rotate(-25deg);opacity:0}
+      }
+      @keyframes rainbowTrail2 {
+        0%{transform:translateX(120%) translateY(40%) rotate(20deg);opacity:0}
+        15%{opacity:0.5}
+        85%{opacity:0.5}
+        100%{transform:translateX(-120%) translateY(-50%) rotate(20deg);opacity:0}
+      }
+      @keyframes rainbowTrail3 {
+        0%{transform:translateX(-100%) translateY(-30%) rotate(-10deg);opacity:0}
+        20%{opacity:0.4}
+        80%{opacity:0.4}
+        100%{transform:translateX(130%) translateY(40%) rotate(-10deg);opacity:0}
+      }
+      @keyframes loadBar {
+        0%{width:0%}100%{width:100%}
+      }
+      @keyframes loadShimmer {
+        0%{left:-40%}100%{left:100%}
+      }
+      @keyframes fadeIn {
+        from{opacity:0}to{opacity:1}
+      }
+      @keyframes noteFloat {
+        0%{transform:translateY(0) scale(1);opacity:1}100%{transform:translateY(-120px) scale(1.5);opacity:0}
+      }
+      @keyframes bubbleRise {
+        0%{transform:translateY(0) translateX(0)}
+        10%{transform:translateY(0) translateX(0)}
+        35%{transform:translateY(-25vh) translateX(18px)}
+        55%{transform:translateY(-50vh) translateX(-18px)}
+        75%{transform:translateY(-75vh) translateX(12px)}
+        100%{transform:translateY(-120vh) translateX(0)}
+      }
+      @keyframes popFog {
+        0%{transform:scale(0.5);opacity:0.8;filter:blur(6px)}
+        20%{transform:scale(1.8);opacity:0.65;filter:blur(10px)}
+        50%{transform:scale(3);opacity:0.35;filter:blur(18px)}
+        100%{transform:scale(4.5);opacity:0;filter:blur(35px)}
+      }
+      @keyframes megaShockwave {
+        0%{transform:scale(0);opacity:0.6}
+        50%{opacity:0.3}
+        100%{transform:scale(8);opacity:0}
+      }
+      @keyframes popRing {
+        0%{transform:scale(0);opacity:0.8}100%{transform:scale(3);opacity:0}
+      }
+      @keyframes confettiFall {
+        0%{transform:translateY(-20px) rotate(0deg);opacity:1}
+        100%{transform:translateY(100vh) rotate(720deg);opacity:0}
+      }
+      @keyframes pulse {
+        0%,100%{transform:scale(1)}50%{transform:scale(1.06)}
+      }
+      @keyframes cardFloat1 {
+        0%,100%{transform:translateY(0)}50%{transform:translateY(-30px)}
+      }
+      @keyframes cardFloat2 {
+        0%,100%{transform:translateY(-10px)}50%{transform:translateY(-40px)}
+      }
+      @keyframes cardBubble {
+        0%{transform:translateY(0) scale(1);opacity:0.7}100%{transform:translateY(-80px) scale(0.6);opacity:0}
+      }
+      @keyframes cardBounce {
+        0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}
+      }
+      @keyframes slideLeft {
+        from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}
+      }
+      @keyframes spin {
+        from{transform:rotate(0deg)}to{transform:rotate(360deg)}
+      }
+      @keyframes trophySpin {
+        0%{transform:rotate(-10deg) scale(1)}25%{transform:rotate(10deg) scale(1.1)}50%{transform:rotate(-10deg) scale(1)}75%{transform:rotate(10deg) scale(1.1)}100%{transform:rotate(-10deg) scale(1)}
+      }
+      @keyframes scoreBounce {
+        0%{transform:scale(1)}50%{transform:scale(1.4)}100%{transform:scale(1)}
+      }
+      body, html {
+        font-family: 'Nunito', sans-serif;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-text-size-adjust: 100%;
+        -ms-content-zooming: none;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { document.head.removeChild(style); document.head.removeChild(link); };
+  }, []);
+  return null;
+}
+
+/* ─── Sparkle layer ─── */
+function SparkleLayer() {
+  const sparkles = useRef(
+    Array.from({length:35}, (_,i) => ({
+      id:i,
+      left: Math.random()*100,
+      top: Math.random()*100,
+      size: 4 + Math.random()*8,
+      delay: Math.random()*3,
+      dur: 1.5 + Math.random()*2
+    }))
+  ).current;
+  return (
+    <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:1}}>
+      {sparkles.map(s => (
+        <div key={s.id} style={{
+          position:'absolute', left:s.left+'%', top:s.top+'%',
+          width:s.size, height:s.size,
+          background:'radial-gradient(circle, #FFD700 0%, rgba(255,215,0,0) 70%)',
+          borderRadius:'50%',
+          animation:`sparkle ${s.dur}s ease-in-out ${s.delay}s infinite`
+        }} />
+      ))}
+    </div>
+  );
+}
+
+/* ─── Shimmer overlay ─── */
+function ShimmerOverlay() {
+  return (
+    <div style={{
+      position:'fixed',inset:0,pointerEvents:'none',zIndex:2,overflow:'hidden'
+    }}>
+      <div style={{
+        position:'absolute',width:'200%',height:'200%',
+        background:'radial-gradient(ellipse at center, rgba(255,255,255,0.15) 0%, transparent 60%)',
+        animation:'shimmerDrift 12s linear infinite'
+      }} />
+    </div>
+  );
+}
+
+/* ─── Animated BG ─── */
+function AnimatedBG() {
+  return (
+    <div style={{
+      position:'fixed',inset:0,zIndex:0,
+      background:'linear-gradient(135deg, #FFB6C1, #E6CCFF, #AED6F1, #FFB6C1, #E6CCFF)',
+      backgroundSize:'400% 400%',
+      animation:'gradientShift 8s ease infinite'
+    }} />
+  );
+}
+
+/* ─── Particle system ─── */
+function Particles({ particles }) {
+  return (
+    <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:50}}>
+      {particles.map(p => {
+        const isEmber = p.type === 'ember';
+        return (
+        <div key={p.id} style={{position:'absolute',left:p.x,top:p.y,width:p.size,height:p.size}}>
+          <style>{`
+            @keyframes gb_${p.id}{
+              0%{transform:translate(0,0) scale(1);opacity:1}
+              ${isEmber?'50%{opacity:0.7}75%{opacity:0.3}':''}
+              100%{transform:translate(${p.vx}px,${p.vy}px) scale(0.15) rotate(${p.rot}deg);opacity:0}
+            }
+          `}</style>
+          <div style={{
+            width:'100%',height:'100%',borderRadius:'50%',
+            background:p.color,
+            boxShadow: isEmber ? `0 0 ${p.size}px ${p.color}66` : 'none',
+            animation:`gb_${p.id} ${p.dur}ms ease-out forwards`
+          }} />
+        </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function useParticles() {
+  const [particles, setParticles] = useState([]);
+  const idRef = useRef(0);
+  const burst = useCallback((x, y, count = 30, colors = null, opts = {}) => {
+    const cs = colors || ['#FF69B4','#FFD700','#87CEEB','#FF6B6B','#A55EEA','#48DBFB','#FECA57','#0ABDE3','#5F6AFF'];
+    const speedMul = opts.speed || 1;
+    const sizeMul = opts.size || 1;
+    const durMul = opts.durMul || 1;
+    const newP = Array.from({length:count}, () => {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = (80 + Math.random() * 160) * speedMul;
+      return {
+        id: idRef.current++,
+        x, y,
+        size: (5 + Math.random() * 10) * sizeMul,
+        color: cs[Math.floor(Math.random()*cs.length)],
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - (opts.upBias || 0),
+        rot: 180 + Math.random() * 540,
+        dur: (500 + Math.random() * 400) * durMul,
+        type: opts.type || 'default'
+      };
+    });
+    setParticles(prev => [...prev, ...newP]);
+    const maxDur = Math.max(...newP.map(p => p.dur)) + 100;
+    setTimeout(() => setParticles(prev => prev.filter(p => !newP.includes(p))), maxDur);
+  }, []);
+  return { particles, burst };
+}
+
+/* ─── Pop Ring ─── */
+function PopRings({ rings }) {
+  return (
+    <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:49}}>
+      {rings.map(r => (
+        <div key={r.id} style={{
+          position:'absolute', left:r.x - 20, top:r.y - 20,
+          width:40, height:40, borderRadius:'50%',
+          border:'3px solid rgba(255,255,255,0.8)',
+          animation:'popRing 0.5s ease-out forwards'
+        }} />
+      ))}
+    </div>
+  );
+}
+
+/* ─── SPLASH SCREEN ─── */
+function SplashScreen({ onDone }) {
+  const [fadeOut, setFadeOut] = useState(false);
+  const { particles, burst } = useParticles();
+
+  useEffect(() => {
+    const t1 = setTimeout(() => burst(window.innerWidth/2, window.innerHeight/2 - 60, 40,
+      ['#FFD700','#FF69B4','#FFB6C1','#AED6F1','#E6CCFF','#FFFFFF']), 300);
+    const t2 = setTimeout(() => setFadeOut(true), 2600);
+    const t3 = setTimeout(onDone, 3000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [onDone, burst]);
+
+  return (
+    <div style={{
+      position:'fixed',inset:0,zIndex:100,display:'flex',flexDirection:'column',
+      alignItems:'center',justifyContent:'center',
+      opacity: fadeOut ? 0 : 1, transition:'opacity 400ms ease'
+    }}>
+      <AnimatedBG />
+      <SparkleLayer />
+      <Particles particles={particles} />
+
+      {/* Rainbow trails */}
+      <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:5,overflow:'hidden'}}>
+        <div style={{
+          position:'absolute',width:'200%',height:18,top:'30%',left:0,
+          borderRadius:20,
+          background:'linear-gradient(90deg, transparent, #FF69B4, #FF9F43, #FECA57, #48DBFB, #A55EEA, #FF69B4, transparent)',
+          filter:'blur(6px)',
+          animation:'rainbowTrail1 2.8s ease-in-out 0.3s forwards'
+        }} />
+        <div style={{
+          position:'absolute',width:'200%',height:14,top:'55%',right:0,
+          borderRadius:20,
+          background:'linear-gradient(90deg, transparent, #87CEEB, #E6CCFF, #FFB6C1, #FFD700, #87CEEB, transparent)',
+          filter:'blur(5px)',
+          animation:'rainbowTrail2 3s ease-in-out 0.6s forwards'
+        }} />
+        <div style={{
+          position:'absolute',width:'180%',height:10,top:'70%',left:0,
+          borderRadius:20,
+          background:'linear-gradient(90deg, transparent, #FFD700, #FF69B4, #A55EEA, #48DBFB, #FECA57, transparent)',
+          filter:'blur(4px)',
+          animation:'rainbowTrail3 2.5s ease-in-out 1s forwards'
+        }} />
+      </div>
+
+      <div style={{zIndex:10,textAlign:'center'}}>
+        <div style={{
+          fontFamily:"'Baloo 2','Fredoka One',cursive",fontSize:'clamp(48px,13vw,100px)',
+          fontWeight:800,
+          color:'#FF69B4',
+          textShadow:'0 0 30px rgba(255,182,193,0.8), 0 0 60px rgba(255,182,193,0.5), 0 0 90px rgba(255,105,180,0.3), 3px 3px 0 #E6CCFF, -1px -1px 0 #FFB6C1',
+          animation:'titleEntrance 1s ease-out forwards, float 3s ease-in-out 1s infinite',
+          letterSpacing:'2px',
+          WebkitTextStroke:'1px rgba(255,255,255,0.2)'
+        }}>
+          Aria's Code
+        </div>
+        <div style={{
+          fontFamily:"'Dancing Script',cursive",fontSize:'clamp(32px,8vw,48px)',
+          fontWeight:700,
+          color:'#FF69B4',
+          textShadow:'0 0 10px rgba(255,105,180,0.9), 0 0 30px rgba(255,105,180,0.6), 0 0 50px rgba(255,105,180,0.4), 2px 2px 0 #FFFFFF, -1px -1px 0 #FFFFFF',
+          marginTop:6,
+          animation:'fadeIn 0.8s ease 0.4s both, float 3s ease-in-out 1.2s infinite'
+        }}>
+          👑 Princess Aria 👑
+        </div>
+        <div style={{
+          fontFamily:"'Nunito',sans-serif",fontSize:'clamp(14px,3.5vw,20px)',
+          color:COLORS.skyBlue, fontStyle:'italic', marginTop:12,
+          animation:'fadeIn 0.6s ease 0.8s both'
+        }}>
+          ✨ A Magical World for Aria ✨
+        </div>
+      </div>
+      <div style={{
+        position:'absolute',bottom:60,width:'70%',maxWidth:320,height:18,
+        borderRadius:12,background:'rgba(255,255,255,0.3)',overflow:'hidden',zIndex:10,
+        boxShadow:'0 0 15px rgba(255,105,180,0.3)'
+      }}>
+        <div style={{
+          height:'100%',borderRadius:12,
+          background:'linear-gradient(90deg,#FF69B4,#FFB6C1,#FF69B4)',
+          animation:'loadBar 3000ms linear forwards',position:'relative',overflow:'hidden'
+        }}>
+          <div style={{
+            position:'absolute',top:0,width:'40%',height:'100%',
+            background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.6),transparent)',
+            animation:'loadShimmer 1s linear infinite'
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── PHOTO SPLASH — Aria's photo for 2s ─── */
+function PhotoSplash({ onDone }) {
+  const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setFadeOut(true), 1900);
+    const t2 = setTimeout(onDone, 2300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [onDone]);
+
+  return (
+    <div style={{
+      position:'fixed',inset:0,zIndex:100,
+      background:'linear-gradient(180deg, #FFB6C1, #FFD1DC, #FFB6C1)',
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      opacity: fadeOut ? 0 : 1, transition:'opacity 400ms ease'
+    }}>
+      <SparkleLayer />
+      <div style={{
+        width:'85%',maxWidth:360,aspectRatio:'3/4',borderRadius:30,overflow:'hidden',
+        boxShadow:'0 8px 40px rgba(255,105,180,0.4), 0 0 80px rgba(255,182,193,0.3)',
+        border:'4px solid rgba(255,255,255,0.5)',
+        animation:'titleEntrance 0.8s ease-out forwards',
+        zIndex:10
+      }}>
+        <img src="aria.jpg" alt="Princess Aria"
+          style={{width:'100%',height:'100%',objectFit:'cover'}} />
+      </div>
+      <div style={{
+        fontFamily:"'Dancing Script',cursive",fontSize:'clamp(26px,7vw,38px)',
+        fontWeight:700,color:'#FF69B4',
+        textShadow:'0 0 15px rgba(255,105,180,0.6), 2px 2px 0 #FFFFFF',
+        marginTop:16,zIndex:10,
+        animation:'fadeIn 0.6s ease 0.3s both'
+      }}>
+        👑 Princess Aria 👑
+      </div>
+
+      {/* 3 cute pink flowers rising from bottom */}
+      {[
+        {left:'12%',delay:0.3,rot:-15,size:70},
+        {left:'50%',delay:0.6,rot:8,size:80},
+        {left:'82%',delay:0.9,rot:-5,size:65}
+      ].map((f,i) => (
+        <div key={i} style={{
+          position:'absolute',bottom:0,left:f.left,
+          transform:`translateX(-50%) rotate(${f.rot}deg)`,
+          zIndex:8,
+          animation:`fadeIn 0.8s ease ${f.delay}s both`
+        }}>
+          {/* Stem */}
+          <div style={{
+            width:6,height:f.size*1.2,
+            background:'linear-gradient(180deg, #5AAF5E, #3D9142)',
+            borderRadius:3,margin:'0 auto',
+            position:'relative'
+          }}>
+            {/* Leaf */}
+            <div style={{
+              position:'absolute',top:'40%',left:i%2===0?-12:6,
+              width:16,height:10,
+              background:'linear-gradient(135deg, #7BC67E, #5AAF5E)',
+              borderRadius:i%2===0?'50% 0 50% 50%':'0 50% 50% 50%',
+              transform:`rotate(${i%2===0?-20:20}deg)`
+            }} />
+          </div>
+          {/* Flower head */}
+          <div style={{
+            position:'absolute',top:-f.size*0.35,left:'50%',transform:'translateX(-50%)',
+            width:f.size*0.7,height:f.size*0.7,
+            display:'flex',alignItems:'center',justifyContent:'center'
+          }}>
+            {/* Petals */}
+            {[0,72,144,216,288].map((angle,pi) => (
+              <div key={pi} style={{
+                position:'absolute',
+                width:f.size*0.28,height:f.size*0.38,
+                background:`radial-gradient(ellipse at 50% 70%, #FF69B4, #FF1493 60%, #C71585)`,
+                borderRadius:'50% 50% 50% 50% / 60% 60% 40% 40%',
+                transformOrigin:'bottom center',
+                transform:`rotate(${angle}deg) translateY(-${f.size*0.12}px)`,
+                boxShadow:'inset 0 -2px 4px rgba(255,255,255,0.3), inset 0 2px 3px rgba(0,0,0,0.1)'
+              }} />
+            ))}
+            {/* Center */}
+            <div style={{
+              width:f.size*0.18,height:f.size*0.18,borderRadius:'50%',
+              background:'radial-gradient(circle, #FFD700, #FFA000)',
+              boxShadow:'0 0 6px rgba(255,215,0,0.5)',
+              zIndex:2
+            }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── HOME SCREEN ─── */
+function HomeScreen({ onNavigate, onBack }) {
+  useEffect(() => { startLullaby(); return stopLullaby; }, []);
+
+  const cards = [
+    { key:'piano', emoji:'🎹', label:'Play Piano', grad:'linear-gradient(135deg,#FF69B4,#A55EEA)',
+      shadow:'0 8px 30px rgba(255,105,180,0.4)' },
+    { key:'bubbles', emoji:'🫧', label:'Pop Bubbles!', grad:'linear-gradient(135deg,#87CEEB,#0ABDE3)',
+      shadow:'0 8px 30px rgba(135,206,235,0.4)' },
+    { key:'numbers', emoji:'🔢', label:'Learn Numbers', grad:'linear-gradient(135deg,#FECA57,#FF69B4)',
+      shadow:'0 8px 30px rgba(254,202,87,0.4)' },
+    { key:'draw', emoji:'🎨', label:'Draw & Color!', grad:'linear-gradient(135deg,#B2F2BB,#0ABDE3)',
+      shadow:'0 8px 30px rgba(178,242,187,0.4)' },
+    { key:'shapes', emoji:'⭐', label:'Shape Poppers!', grad:'linear-gradient(135deg,#FFD700,#1E90FF)',
+      shadow:'0 8px 30px rgba(255,215,0,0.4)' },
+    { key:'garden', emoji:'🌸', label:'Magic Garden!', grad:'linear-gradient(135deg,#7BC67E,#FFD700)',
+      shadow:'0 8px 30px rgba(123,198,126,0.4)' },
+    { key:'galaxy', emoji:'🪐', label:'Color Galaxy!', grad:'linear-gradient(135deg,#0A1428,#8B5CF6)',
+      shadow:'0 8px 30px rgba(139,92,246,0.4)' },
+    { key:'snake', emoji:'🐍', label:'Snake Guide!', grad:'linear-gradient(135deg,#00CC33,#FFD700)',
+      shadow:'0 8px 30px rgba(0,204,51,0.4)' }
+  ];
+
+  return (
+    <div style={{position:'relative',zIndex:10,display:'flex',flexDirection:'column',
+      alignItems:'center',padding:'30px 20px',minHeight:'100vh',overflowY:'auto',
+      WebkitOverflowScrolling:'touch'}}>
+      {onBack && <BackButton onClick={onBack} />}
+      <div style={{
+        fontFamily:"'Fredoka One',cursive",fontSize:'clamp(24px,6vw,32px)',
+        color:'#FF69B4',
+        textShadow:'0 0 15px rgba(255,105,180,0.4), 1px 1px 0 #E6CCFF',
+        marginBottom:20,marginTop: onBack ? 30 : 0
+      }}>
+        🎮 Aria's Games 🌸
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:24,width:'100%',maxWidth:380}}>
+        {cards.map((c,i) => (
+          <div key={c.key}
+            role="button"
+            onClick={() => { getAudioContext(); onNavigate(c.key); }}
+            style={{
+              background:c.grad,height:'min(180px, 22vh)',borderRadius:30,
+              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+              boxShadow:c.shadow,cursor:'pointer',position:'relative',overflow:'hidden',
+              transition:'transform 0.2s',
+            }}
+            onMouseDown={e => e.currentTarget.style.transform='scale(0.95)'}
+            onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+            onTouchEnd={e => e.currentTarget.style.transform='scale(1)'}
+          >
+            {/* gloss */}
+            <div style={{position:'absolute',inset:0,
+              background:'linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 50%)',
+              borderRadius:30}} />
+            {/* floating decorations */}
+            {c.key === 'piano' && <>
+              <span style={{position:'absolute',top:15,left:20,fontSize:24,animation:'cardFloat1 2s ease-in-out infinite',opacity:0.7}}>🎵</span>
+              <span style={{position:'absolute',top:25,right:30,fontSize:20,animation:'cardFloat2 2.5s ease-in-out infinite',opacity:0.7}}>🎶</span>
+              <span style={{position:'absolute',bottom:20,left:40,fontSize:18,animation:'cardFloat1 3s ease-in-out infinite',opacity:0.6}}>🎵</span>
+            </>}
+            {c.key === 'bubbles' && <>
+              <span style={{position:'absolute',bottom:10,left:25,width:16,height:16,borderRadius:'50%',background:'rgba(255,255,255,0.4)',animation:'cardBubble 3s ease-in-out infinite'}} />
+              <span style={{position:'absolute',bottom:5,left:55,width:12,height:12,borderRadius:'50%',background:'rgba(255,255,255,0.3)',animation:'cardBubble 3.5s ease-in-out 0.5s infinite'}} />
+              <span style={{position:'absolute',bottom:15,right:40,width:20,height:20,borderRadius:'50%',background:'rgba(255,255,255,0.35)',animation:'cardBubble 2.8s ease-in-out 1s infinite'}} />
+            </>}
+            {c.key === 'numbers' && <>
+              {[1,2,3,4,5].map(n => (
+                <span key={n} style={{position:'absolute',
+                  top: 10 + (n%3)*25, left: 15 + (n-1)*18 + '%',
+                  fontSize:20, fontFamily:"'Fredoka One',cursive",color:'rgba(255,255,255,0.6)',
+                  animation:`cardBounce ${1.5+n*0.2}s ease-in-out ${n*0.15}s infinite`
+                }}>{n}</span>
+              ))}
+            </>}
+            {c.key === 'draw' && <>
+              <span style={{position:'absolute',top:12,left:20,fontSize:20,animation:'cardFloat1 2.2s ease-in-out infinite',opacity:0.7}}>🖌️</span>
+              <span style={{position:'absolute',top:20,right:25,fontSize:18,animation:'cardFloat2 2.8s ease-in-out infinite',opacity:0.7}}>🌈</span>
+              <span style={{position:'absolute',bottom:18,left:45,fontSize:16,animation:'cardBounce 2s ease-in-out 0.3s infinite',opacity:0.6}}>✏️</span>
+            </>}
+            {c.key === 'shapes' && <>
+              <span style={{position:'absolute',top:14,left:24,fontSize:20,animation:'cardFloat1 2s ease-in-out infinite',opacity:0.7}}>🔵</span>
+              <span style={{position:'absolute',top:22,right:26,fontSize:18,animation:'cardFloat2 2.4s ease-in-out infinite',opacity:0.7}}>💖</span>
+              <span style={{position:'absolute',bottom:14,left:44,fontSize:16,animation:'cardBounce 1.9s ease-in-out 0.3s infinite',opacity:0.6}}>🟡</span>
+            </>}
+            {c.key === 'garden' && <>
+              <span style={{position:'absolute',top:12,left:22,fontSize:20,animation:'cardFloat1 2.1s ease-in-out infinite',opacity:0.7}}>🦋</span>
+              <span style={{position:'absolute',top:18,right:26,fontSize:18,animation:'cardFloat2 2.5s ease-in-out infinite',opacity:0.7}}>⭐</span>
+              <span style={{position:'absolute',bottom:14,left:46,fontSize:16,animation:'cardBounce 2s ease-in-out 0.2s infinite',opacity:0.6}}>🍄</span>
+            </>}
+            {c.key === 'galaxy' && <>
+              <span style={{position:'absolute',top:14,left:24,fontSize:18,animation:'sparkle 2s ease-in-out infinite',opacity:0.8}}>✨</span>
+              <span style={{position:'absolute',top:20,right:28,fontSize:16,animation:'sparkle 2.5s ease-in-out 0.5s infinite',opacity:0.7}}>💫</span>
+              <span style={{position:'absolute',bottom:16,left:44,fontSize:14,animation:'sparkle 1.8s ease-in-out 1s infinite',opacity:0.6}}>⭐</span>
+            </>}
+            {c.key === 'snake' && <>
+              <span style={{position:'absolute',top:14,left:22,fontSize:18,animation:'cardFloat1 2s ease-in-out infinite',opacity:0.7}}>🍎</span>
+              <span style={{position:'absolute',top:20,right:26,fontSize:16,animation:'cardFloat2 2.4s ease-in-out infinite',opacity:0.7}}>⭐</span>
+              <span style={{position:'absolute',bottom:14,left:46,fontSize:14,animation:'cardBounce 2s ease-in-out 0.3s infinite',opacity:0.6}}>💎</span>
+            </>}
+            <span style={{fontSize:48,zIndex:2}}>{c.emoji}</span>
+            <span style={{fontFamily:"'Fredoka One',cursive",fontSize:24,color:'white',
+              zIndex:2,marginTop:8,textShadow:'0 2px 8px rgba(0,0,0,0.15)'}}>{c.label}</span>
+          </div>
+        ))}
+      </div>
+      {/* Mamino button */}
+      <div role="button" onClick={() => onNavigate('mamino')}
+        style={{
+          marginTop:20,marginBottom:30,padding:'14px 30px',borderRadius:30,
+          background:'linear-gradient(135deg,#FF69B4,#FFB6C1,#FF69B4)',
+          display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+          boxShadow:'0 4px 20px rgba(255,105,180,0.4), inset 0 1px 0 rgba(255,255,255,0.3)',
+          cursor:'pointer',transition:'transform 0.2s',
+          border:'2px solid rgba(255,255,255,0.4)'
+        }}
+        onMouseDown={e => e.currentTarget.style.transform='scale(0.95)'}
+        onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+      >
+        <span style={{fontSize:20}}>💖</span>
+        <span style={{fontFamily:"'Dancing Script',cursive",fontSize:22,fontWeight:700,
+          color:'white',textShadow:'0 2px 6px rgba(0,0,0,0.15)'}}>Mamino</span>
+        <span style={{fontSize:20}}>💖</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAMINO SCREEN ─── */
+function MaminoScreen({ onBack }) {
+  const [showText, setShowText] = useState(false);
+  const { particles, burst } = useParticles();
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setShowText(true);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      burst(w/2, h/2 - 50, 60, ['#FF69B4','#FFB6C1','#FFD700','#FFFFFF','#E6CCFF','#FF6B6B'], {speed:1.5, size:1.3, type:'fire'});
+      setTimeout(() => burst(w/2, h/2 - 50, 30, ['#FFD700','#FFFFFF','#FF69B4'], {speed:0.6, size:1, type:'ember', durMul:2, upBias:50}), 200);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [burst]);
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,
+      background:'linear-gradient(180deg, #FFB6C1, #FFD1DC, #E6CCFF)',
+      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+      overflow:'hidden',touchAction:'none'}}>
+      <BackButton onClick={onBack} />
+      <SparkleLayer />
+      <Particles particles={particles} />
+
+      {/* Photo */}
+      <div style={{
+        width:'88%',maxWidth:380,aspectRatio:'1',borderRadius:28,overflow:'hidden',
+        boxShadow:'0 8px 40px rgba(255,105,180,0.5), 0 0 60px rgba(255,182,193,0.3)',
+        border:'4px solid rgba(255,255,255,0.5)',
+        zIndex:10,
+        animation:'titleEntrance 0.6s ease-out forwards'
+      }}>
+        <img src="mamino.jpg" alt="Mamino"
+          style={{width:'100%',height:'100%',objectFit:'cover'}} />
+      </div>
+
+      {/* MAMINOOO text splash */}
+      {showText && (
+        <div style={{
+          position:'absolute',top:'50%',left:0,right:0,
+          transform:'translateY(-50%)',
+          zIndex:20,textAlign:'center',
+          padding:'0 10px',
+          animation:'titleEntrance 0.5s ease-out forwards'
+        }}>
+          <div style={{
+            fontFamily:"'Baloo 2','Fredoka One',cursive",
+            fontSize:'clamp(44px,13vw,72px)',fontWeight:800,
+            color:'#FFFFFF',
+            textShadow:'0 0 20px rgba(255,105,180,0.8), 0 0 40px rgba(255,105,180,0.5), 0 0 60px rgba(255,105,180,0.3), 3px 3px 0 #FF69B4, -2px -2px 0 #FFB6C1',
+            animation:'float 2s ease-in-out infinite',
+            letterSpacing:2
+          }}>
+            MAMINOOO
+          </div>
+          <div style={{
+            fontSize:32,marginTop:8,
+            animation:'float 2s ease-in-out 0.3s infinite'
+          }}>
+            💖💖💖
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── BACK BUTTON ─── */
+function BackButton({ onClick }) {
+  return (
+    <div role="button" onClick={onClick}
+      style={{
+        position:'absolute',top:16,left:16,zIndex:40,
+        background:'linear-gradient(135deg,#FF69B4,#FFB6C1)',
+        color:'white',fontFamily:"'Fredoka One',cursive",fontSize:16,
+        padding:'10px 22px',borderRadius:30,cursor:'pointer',
+        boxShadow:'0 4px 15px rgba(255,105,180,0.4)',
+        transition:'transform 0.2s'
+      }}
+      onMouseDown={e => e.currentTarget.style.transform='scale(0.92)'}
+      onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+    >
+      ← Home
+    </div>
+  );
+}
+
+/* ─── PIANO SCREEN ─── */
+function PianoScreen({ onBack }) {
+  const { particles, burst } = useParticles();
+  const [floatingNotes, setFloatingNotes] = useState([]);
+  const [glowKeys, setGlowKeys] = useState({});
+  const [happyFaces, setHappyFaces] = useState([]);
+  const noteIdRef = useRef(0);
+  const faceIdRef = useRef(0);
+  const tapCount = useRef(0);
+
+  // Bouncing happy faces
+  const spawnFace = useCallback((x, y) => {
+    const faces = ['😊','😄','🥰','😍','🤩','😆','💖','🌟'];
+    const id = faceIdRef.current++;
+    const face = faces[Math.floor(Math.random()*faces.length)];
+    const vx = (Math.random()-0.5) * 80;
+    setHappyFaces(prev => [...prev, {id, x, y, face, vx}]);
+    setTimeout(() => setHappyFaces(prev => prev.filter(f => f.id !== id)), 1500);
+  }, []);
+
+  const handleKey = useCallback((freq, x, y, color, noteIdx) => {
+    playNote(freq, 0.6);
+    tapCount.current++;
+    // Colorful particle burst
+    const colors = [color,'#FFD700','#FF69B4','#87CEEB','#FFFFFF','#A55EEA','#FECA57','#FF6B6B','#48DBFB','#00D68F','#FF9F43','#FFB6C1'];
+    burst(x, y, 40, colors, {speed:1.4, size:1.2});
+    // Floating emojis — notes + sparkles
+    const emojis = ['🎵','🎶','✨','⭐','💫','🎵'];
+    for (let j = 0; j < 3; j++) {
+      const id = noteIdRef.current++;
+      const emoji = emojis[Math.floor(Math.random()*emojis.length)];
+      const ox = x + (Math.random()-0.5)*60;
+      setFloatingNotes(prev => [...prev, {id, x:ox, y:y-10, emoji}]);
+      setTimeout(() => setFloatingNotes(prev => prev.filter(n => n.id !== id)), 1200);
+    }
+    // Spawn happy face every 3rd tap
+    if (tapCount.current % 3 === 0) {
+      spawnFace(x + (Math.random()-0.5)*100, y - 30);
+    }
+    // Glow effect on key
+    setGlowKeys(prev => ({...prev, [noteIdx]: color}));
+    setTimeout(() => setGlowKeys(prev => { const n = {...prev}; delete n[noteIdx]; return n; }), 400);
+  }, [burst, spawnFace]);
+
+  const whiteKeys = PIANO_KEYS;
+  const keyHeight = Math.min(42, (window.innerHeight - 140) / whiteKeys.length);
+  const [autoPlaying, setAutoPlaying] = useState(false);
+  const autoPlayRef = useRef(null);
+
+  // Twinkle Twinkle + Mary Had a Little Lamb + Ode to Joy medley (~20 seconds)
+  const autoPlaySong = useCallback(() => {
+    if (autoPlaying) return;
+    setAutoPlaying(true);
+    const melody = [
+      // Twinkle Twinkle Little Star
+      {n:'C4',t:0},{n:'C4',t:400},{n:'G4',t:800},{n:'G4',t:1200},
+      {n:'A4',t:1600},{n:'A4',t:2000},{n:'G4',t:2400},
+      {n:'F4',t:3200},{n:'F4',t:3600},{n:'E4',t:4000},{n:'E4',t:4400},
+      {n:'D4',t:4800},{n:'D4',t:5200},{n:'C4',t:5600},
+      // Mary Had a Little Lamb
+      {n:'E4',t:6400},{n:'D4',t:6800},{n:'C4',t:7200},{n:'D4',t:7600},
+      {n:'E4',t:8000},{n:'E4',t:8400},{n:'E4',t:8800},
+      {n:'D4',t:9600},{n:'D4',t:10000},{n:'D4',t:10400},
+      {n:'E4',t:11200},{n:'G4',t:11600},{n:'G4',t:12000},
+      // Ode to Joy
+      {n:'E4',t:12800},{n:'E4',t:13200},{n:'F4',t:13600},{n:'G4',t:14000},
+      {n:'G4',t:14400},{n:'F4',t:14800},{n:'E4',t:15200},{n:'D4',t:15600},
+      {n:'C4',t:16000},{n:'C4',t:16400},{n:'D4',t:16800},{n:'E4',t:17200},
+      {n:'E4',t:17600},{n:'D4',t:18200},{n:'D4',t:18600},
+      // Ending flourish
+      {n:'C4',t:19200},{n:'E4',t:19400},{n:'G4',t:19600},{n:'C5',t:19800},
+    ];
+    const pianoContainer = document.querySelector('[data-piano-keys]');
+    const timeouts = melody.map(({n, t}) => {
+      return setTimeout(() => {
+        const freq = NOTE_FREQS[n];
+        if (!freq) return;
+        playNote(freq, 0.5);
+        // Find the key element and simulate visual feedback
+        const keyIdx = whiteKeys.findIndex(k => k.note === n);
+        if (keyIdx !== -1 && pianoContainer) {
+          const keyEl = pianoContainer.children[keyIdx];
+          if (keyEl) {
+            const rect = keyEl.getBoundingClientRect();
+            handleKey(freq, rect.left + rect.width/2, rect.top + rect.height/2, KEY_COLORS[keyIdx], keyIdx);
+          }
+        }
+      }, t);
+    });
+    autoPlayRef.current = timeouts;
+    // Auto-stop after song ends
+    const endTimeout = setTimeout(() => setAutoPlaying(false), 20500);
+    autoPlayRef.current.push(endTimeout);
+  }, [autoPlaying, handleKey, whiteKeys]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (autoPlayRef.current) autoPlayRef.current.forEach(clearTimeout);
+    };
+  }, []);
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,display:'flex',
+      flexDirection:'column',alignItems:'center',paddingTop:'max(50px, env(safe-area-inset-top, 20px))',
+      overflow:'hidden',touchAction:'none',overscrollBehavior:'none'}}>
+
+      {/* Premium gradient background */}
+      <div style={{position:'absolute',inset:0,zIndex:0,
+        background:'linear-gradient(180deg, #1a0a2e 0%, #2d1b4e 30%, #4a2068 60%, #2d1b4e 100%)',
+      }} />
+      {/* Subtle sparkles on dark bg */}
+      {[...Array(15)].map((_,i) => (
+        <div key={'ps'+i} style={{
+          position:'absolute',
+          left:(5+Math.random()*90)+'%', top:(5+Math.random()*90)+'%',
+          width:3,height:3,borderRadius:'50%',background:'#FFD700',
+          opacity:0.4,zIndex:1,pointerEvents:'none',
+          animation:`sparkle ${1.5+i*0.2}s ease-in-out ${i*0.3}s infinite`
+        }} />
+      ))}
+
+      <BackButton onClick={onBack} />
+      <Particles particles={particles} />
+
+      {/* floating notes */}
+      {floatingNotes.map(n => (
+        <div key={n.id} style={{
+          position:'fixed',left:n.x,top:n.y,fontSize:28+Math.random()*12,pointerEvents:'none',zIndex:51,
+          animation:'noteFloat 1.2s ease-out forwards'
+        }}>{n.emoji}</div>
+      ))}
+
+      {/* Bouncing happy faces */}
+      {happyFaces.map(f => (
+        <div key={f.id} style={{
+          position:'fixed',left:f.x,top:f.y,fontSize:36,pointerEvents:'none',zIndex:52,
+          animation:'noteFloat 1.5s ease-out forwards'
+        }}>
+          <div style={{animation:'cardBounce 0.4s ease-in-out 3'}}>{f.face}</div>
+        </div>
+      ))}
+
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10,zIndex:10}}>
+        <div style={{fontFamily:"'Fredoka One',cursive",fontSize:28,color:'#FFD700',
+          textShadow:'0 0 15px rgba(255,215,0,0.5), 0 0 30px rgba(255,105,180,0.3)'}}>
+          🎹 Aria's Piano
+        </div>
+        <div role="button"
+          onClick={autoPlaySong}
+          style={{
+            background: autoPlaying
+              ? 'linear-gradient(135deg,#A55EEA,#5F6AFF)'
+              : 'linear-gradient(135deg,#FFD700,#FF9F43)',
+            padding:'8px 18px',borderRadius:30,cursor:'pointer',
+            fontFamily:"'Fredoka One',cursive",fontSize:14,color:'white',
+            boxShadow: autoPlaying
+              ? '0 0 20px rgba(165,94,234,0.5)'
+              : '0 4px 15px rgba(255,215,0,0.4)',
+            transition:'transform 0.2s, box-shadow 0.2s',
+            animation: autoPlaying ? 'pulse 1s ease-in-out infinite' : 'none'
+          }}
+          onMouseDown={e => e.currentTarget.style.transform='scale(0.92)'}
+          onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+        >
+          {autoPlaying ? '🎶 Playing...' : '✨ Play Song'}
+        </div>
+      </div>
+
+      <div data-piano-keys style={{position:'relative',width:'90%',maxWidth:380,margin:'0 auto',zIndex:10}}>
+        {/* White keys */}
+        {whiteKeys.map((k, i) => {
+          const isGlowing = glowKeys[i];
+          return (
+          <div key={k.note} role="button"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              handleKey(NOTE_FREQS[k.note], rect.left + rect.width/2, rect.top + rect.height/2, KEY_COLORS[i], i);
+            }}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              const rect = e.currentTarget.getBoundingClientRect();
+              handleKey(NOTE_FREQS[k.note], rect.left + rect.width/2, rect.top + rect.height/2, KEY_COLORS[i], i);
+            }}
+            style={{
+              width:'100%',height:keyHeight-2,marginBottom:2,
+              background: isGlowing
+                ? `linear-gradient(90deg, ${KEY_COLORS[i]}66, ${KEY_COLORS[i]}33, white 60%, white)`
+                : `linear-gradient(90deg, ${KEY_COLORS[i]}22, white 30%, white)`,
+              borderRadius:'0 20px 20px 0',
+              border:`2px solid ${KEY_COLORS[i]}55`,
+              boxShadow: isGlowing
+                ? `0 0 30px ${KEY_COLORS[i]}aa, 0 0 60px ${KEY_COLORS[i]}44, inset 0 0 20px ${KEY_COLORS[i]}22`
+                : `0 2px 10px ${KEY_COLORS[i]}33, inset 0 -2px 4px rgba(0,0,0,0.05)`,
+              display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:20,
+              cursor:'pointer',
+              transition:'transform 0.1s, box-shadow 0.15s, background 0.15s',
+              fontFamily:"'Fredoka One',cursive",fontSize:15,color:KEY_COLORS[i],
+              position:'relative',zIndex:1,
+              transform: isGlowing ? 'scale(0.96)' : 'scale(1)'
+            }}
+            onMouseDown={e => {e.currentTarget.style.transform='scale(0.94)';e.currentTarget.style.boxShadow=`0 0 25px ${KEY_COLORS[i]}88`}}
+            onMouseUp={e => {e.currentTarget.style.transform='scale(1)';e.currentTarget.style.boxShadow=`0 2px 10px ${KEY_COLORS[i]}33`}}
+          >
+            {/* mini sparkle dot on key */}
+            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',
+              width:8,height:8,borderRadius:'50%',
+              background:`radial-gradient(circle,${KEY_COLORS[i]},transparent)`,
+              opacity:0.6}} />
+            {k.note}
+          </div>
+          );
+        })}
+
+        {/* Black keys */}
+        {Object.entries(BLACK_KEYS_MAP).map(([idx, bk]) => {
+          const i = parseInt(idx);
+          const topPos = (i + 1) * keyHeight - keyHeight * 0.3;
+          const isGlowing = glowKeys['b'+i];
+          return (
+            <div key={bk.note} role="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                handleKey(bk.freq, rect.left + rect.width/2, rect.top + rect.height/2, '#A55EEA', 'b'+i);
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                handleKey(bk.freq, rect.left + rect.width/2, rect.top + rect.height/2, '#A55EEA', 'b'+i);
+              }}
+              style={{
+                position:'absolute',left:0,top:topPos,
+                width:'55%',height:keyHeight * 0.6,
+                background: isGlowing
+                  ? 'linear-gradient(90deg, #5F27CD, #A55EEA)'
+                  : 'linear-gradient(90deg, #1a0a3e, #2D1B69)',
+                borderRadius:'0 14px 14px 0',
+                boxShadow: isGlowing
+                  ? '0 0 25px rgba(165,94,234,0.7), 2px 2px 12px rgba(0,0,0,0.3)'
+                  : '2px 2px 10px rgba(0,0,0,0.3)',
+                display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:14,
+                cursor:'pointer',transition:'transform 0.1s, box-shadow 0.15s',zIndex:5,
+                fontFamily:"'Fredoka One',cursive",fontSize:12,color:'#E6CCFF',
+                transform: isGlowing ? 'scale(0.94)' : 'scale(1)'
+              }}
+              onMouseDown={e => e.currentTarget.style.transform='scale(0.92)'}
+              onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+            >
+              {bk.note}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── BUBBLE POP SCREEN ─── */
+function BubbleScreen({ onBack }) {
+  const [bubbles, setBubbles] = useState([]);
+  const [score, setScore] = useState(0);
+  const [scoreBounce, setScoreBounce] = useState(false);
+  const [rings, setRings] = useState([]);
+  const [fogClouds, setFogClouds] = useState([]);
+  const [megaWave, setMegaWave] = useState(null);
+  const [floatingStars, setFloatingStars] = useState([]);
+  const { particles, burst } = useParticles();
+  const bubbleId = useRef(0);
+  const ringId = useRef(0);
+  const fogId = useRef(0);
+  const starId = useRef(0);
+  const popCount = useRef(0);
+
+  const pastelColors = ['#FFB6C1','#FFC0CB','#FFB6C1','#FFC0CB','#FFB0BE','#FFADB5'];
+  const popColors = ['#FF69B4','#0ABDE3','#5F6AFF','#FFD700','#FF6B6B','#48DBFB','#A55EEA','#00D2D3','#FF9F43','#FECA57','#00D68F','#FF3E7F','#7C5CFC','#00E0FF'];
+  const fogColors = ['#FF69B4','#FFB6C1','#E6CCFF','#AED6F1','#FF9F43','#FECA57','#A55EEA','#87CEEB','#FFD700'];
+
+  // Spawn bubbles
+  useEffect(() => {
+    const spawn = () => {
+      setBubbles(prev => {
+        if (prev.length >= 12) return prev;
+        const size = 60 + Math.random() * 70;
+        return [...prev, {
+          id: bubbleId.current++,
+          x: 10 + Math.random() * 70,
+          size,
+          color: pastelColors[Math.floor(Math.random() * pastelColors.length)],
+          speed: 6 + Math.random() * 8,
+          born: Date.now()
+        }];
+      });
+    };
+    const timer = setInterval(spawn, 800 + Math.random() * 400);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Remove offscreen bubbles
+  useEffect(() => {
+    const cleanup = setInterval(() => {
+      setBubbles(prev => prev.filter(b => (Date.now() - b.born) < b.speed * 1000));
+    }, 1000);
+    return () => clearInterval(cleanup);
+  }, []);
+
+  const popBubble = useCallback((e, b) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    setBubbles(prev => prev.filter(bb => bb.id !== b.id));
+    popCount.current++;
+    const isMega = popCount.current % 5 === 0;
+    if (isMega) {
+      // MEGA baby explosion sound — triple chime + bass boom
+      playPop();
+      playChime();
+      setTimeout(() => playChime(), 120);
+      setTimeout(() => playPop(), 200);
+      // FULL SCREEN pinkish color explosion — a million colors, all pinkish
+      const pinkRainbow = [
+        '#FF69B4','#FFB6C1','#FFC0CB','#FF1493','#FF85A2',
+        '#FFD700','#FECA57','#FF9F43','#E6CCFF','#A55EEA',
+        '#FF6B6B','#FF7F50','#FFFFFF','#FFB0BE','#FF3E7F',
+        '#FFA3D7','#FF85C0','#FFADB5','#48DBFB','#00E0FF'
+      ];
+      // Center explosion
+      burst(cx, cy, 80, pinkRainbow, {speed:2.5, size:1.6});
+      // Delayed waves spreading further
+      setTimeout(() => burst(cx, cy, 60, pinkRainbow, {speed:2, size:1.3}), 70);
+      setTimeout(() => burst(cx, cy, 40, pinkRainbow, {speed:1.5, size:1}), 140);
+      // Screen-wide bursts from edges
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      setTimeout(() => {
+        burst(w*0.2, h*0.3, 25, pinkRainbow, {speed:1.8, size:1.2});
+        burst(w*0.8, h*0.4, 25, pinkRainbow, {speed:1.8, size:1.2});
+        burst(w*0.5, h*0.15, 20, pinkRainbow, {speed:1.5, size:1});
+        burst(w*0.3, h*0.7, 20, pinkRainbow, {speed:1.5, size:1});
+        burst(w*0.7, h*0.7, 20, pinkRainbow, {speed:1.5, size:1});
+      }, 200);
+      // Floating embers everywhere
+      setTimeout(() => burst(cx, cy, 30, ['#FFB6C1','#FFD700','#FFFFFF','#FF69B4'], {speed:0.6, size:1, type:'ember', durMul:2, upBias:40}), 300);
+      // Big baby pink shockwave
+      const waveId = Date.now();
+      setMegaWave({id:waveId, x:cx, y:cy});
+      setTimeout(() => setMegaWave(null), 1200);
+      // Stars everywhere
+      const newStars = Array.from({length:25}, () => ({
+        id: starId.current++,
+        x: Math.random() * w,
+        y: Math.random() * h,
+        size: 18 + Math.random() * 24,
+        delay: Math.random() * 0.4
+      }));
+      setFloatingStars(prev => [...prev, ...newStars]);
+      setTimeout(() => setFloatingStars(prev => prev.filter(s => !newStars.includes(s))), 1800);
+    } else {
+      playPop();
+      // 50 particles in pinkish rainbow colors
+      const pinkMix = ['#FF69B4','#FFB6C1','#FFC0CB','#FFD700','#FF6B6B','#E6CCFF','#A55EEA','#FFFFFF','#FF9F43','#FECA57','#48DBFB','#FFB0BE','#FF85A2','#FFA3D7'];
+      burst(cx, cy, 50, pinkMix, {speed:1.6, size:1});
+    }
+    const rid = ringId.current++;
+    setRings(prev => [...prev, {id:rid, x:cx, y:cy}]);
+    setTimeout(() => setRings(prev => prev.filter(r => r.id !== rid)), 600);
+    // Spawn fog clouds
+    const fogCount = isMega ? 10 : 4;
+    const newFog = Array.from({length:fogCount}, () => ({
+      id: fogId.current++,
+      x: cx + (Math.random()-0.5) * (isMega ? 100 : 40),
+      y: cy + (Math.random()-0.5) * (isMega ? 100 : 40),
+      size: (isMega ? 60 : 40) + Math.random() * (isMega ? 80 : 40),
+      color: fogColors[Math.floor(Math.random() * fogColors.length)],
+      dur: 600 + Math.random() * (isMega ? 800 : 400)
+    }));
+    setFogClouds(prev => [...prev, ...newFog]);
+    setTimeout(() => setFogClouds(prev => prev.filter(f => !newFog.includes(f))), 1800);
+    setScore(prev => prev + 1);
+    setScoreBounce(true);
+    setTimeout(() => setScoreBounce(false), 300);
+  }, [burst]);
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,overflow:'hidden',touchAction:'none',overscrollBehavior:'none'}}>
+      <BackButton onClick={onBack} />
+
+      {/* Background title */}
+      <div style={{
+        position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
+        zIndex:1,pointerEvents:'none',
+        fontFamily:"'Baloo 2','Fredoka One',cursive",
+        fontSize:'clamp(38px,10vw,56px)',fontWeight:800,
+        color:'rgba(255,255,255,0.18)',
+        textShadow:'0 0 30px rgba(255,255,255,0.1)',
+        letterSpacing:3,
+        textAlign:'center',
+        lineHeight:1.2
+      }}>
+        Aria's<br/>Bubbles
+      </div>
+
+      <Particles particles={particles} />
+      <PopRings rings={rings} />
+
+      {/* Mega baby pink shockwave */}
+      {megaWave && (
+        <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:55}}>
+          <div style={{
+            position:'absolute',
+            left: megaWave.x - 60, top: megaWave.y - 60,
+            width:120, height:120, borderRadius:'50%',
+            border:'6px solid #FFB6C1',
+            background:'radial-gradient(circle, rgba(255,182,193,0.3), transparent 70%)',
+            animation:'megaShockwave 1.2s ease-out forwards'
+          }} />
+        </div>
+      )}
+
+      {/* Floating stars from mega pop */}
+      <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:52}}>
+        {floatingStars.map(s => (
+          <div key={s.id} style={{
+            position:'absolute', left:s.x, top:s.y,
+            fontSize:s.size,
+            animation:`noteFloat 1.5s ease-out ${s.delay}s forwards`,
+            opacity:0, animationFillMode:'forwards'
+          }}>⭐</div>
+        ))}
+      </div>
+
+      {/* Fog clouds */}
+      <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:48}}>
+        {fogClouds.map(f => (
+          <div key={f.id} style={{
+            position:'absolute',
+            left: f.x - f.size/2, top: f.y - f.size/2,
+            width: f.size, height: f.size,
+            borderRadius: '50%',
+            background: `radial-gradient(circle, ${f.color}cc, ${f.color}44, transparent)`,
+            animation: `popFog ${f.dur}ms ease-out forwards`
+          }} />
+        ))}
+      </div>
+
+      {/* Score */}
+      <div style={{
+        position:'absolute',top:16,left:'50%',transform:'translateX(-50%)',zIndex:40,
+        background:'linear-gradient(135deg,#FF69B4,#FFB6C1)',
+        padding:'8px 28px',borderRadius:30,
+        fontFamily:"'Fredoka One',cursive",fontSize:22,color:'white',
+        boxShadow:'0 4px 15px rgba(255,105,180,0.4)',
+      }}>
+        <span>🫧 Aria popped: </span>
+        <span style={{
+          display:'inline-block',
+          animation: scoreBounce ? 'scoreBounce 0.3s ease' : 'none'
+        }}>{score}</span>
+      </div>
+
+      {/* Bubbles */}
+      {bubbles.map(b => (
+        <div key={b.id} role="button"
+          onClick={(e) => popBubble(e, b)}
+          style={{
+            position:'absolute',
+            left: b.x + '%',
+            bottom: -b.size,
+            width: b.size, height: b.size,
+            borderRadius: '50%',
+            background: `radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.6) 15%, ${b.color}88 45%, ${b.color}55 70%, rgba(255,182,193,0.3) 100%)`,
+            boxShadow: `inset -6px -6px 15px rgba(180,80,120,0.12), inset 3px 3px 8px rgba(255,255,255,0.5), 0 0 25px ${b.color}33, 0 4px 12px rgba(0,0,0,0.06)`,
+            border: '1px solid rgba(255,255,255,0.35)',
+            cursor: 'pointer',
+            animation: `bubbleRise ${b.speed}s linear forwards`,
+            zIndex: 20
+          }}
+        >
+          {/* Glossy highlight */}
+          <div style={{
+            position:'absolute',top:'12%',left:'18%',
+            width:'35%',height:'25%',
+            borderRadius:'50%',
+            background:'radial-gradient(ellipse, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 100%)',
+            transform:'rotate(-30deg)',
+            pointerEvents:'none'
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── LEARN NUMBERS SCREEN ─── */
+function NumbersScreen({ onBack }) {
+  const [currentNum, setCurrentNum] = useState(1);
+  const [sliding, setSliding] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const { particles, burst } = useParticles();
+  const [confetti, setConfetti] = useState([]);
+  const confettiId = useRef(0);
+
+  const handleTap = useCallback((e) => {
+    if (sliding) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    speakNumber(NUMBER_WORDS[currentNum]);
+    playChime();
+    burst(cx, cy, 50);
+
+    if (currentNum >= 20) {
+      setTimeout(() => {
+        setCompleted(true);
+        speakNumber("Great! Aria knows her numbers!");
+        // confetti rain
+        const newConfetti = Array.from({length:100}, () => ({
+          id: confettiId.current++,
+          x: Math.random() * 100,
+          color: ['#FF69B4','#FFD700','#87CEEB','#A55EEA','#FF6B6B','#48DBFB','#FECA57'][Math.floor(Math.random()*7)],
+          size: 6 + Math.random() * 8,
+          delay: Math.random() * 2,
+          dur: 2 + Math.random() * 3
+        }));
+        setConfetti(newConfetti);
+      }, 1200);
+      return;
+    }
+
+    setSliding(true);
+    setTimeout(() => {
+      setCurrentNum(prev => prev + 1);
+      setSliding(false);
+    }, 1200);
+  }, [currentNum, sliding, burst]);
+
+  const resetGame = useCallback(() => {
+    setCurrentNum(1);
+    setCompleted(false);
+    setConfetti([]);
+  }, []);
+
+  if (completed) {
+    return (
+      <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,display:'flex',
+        flexDirection:'column',alignItems:'center',justifyContent:'center',
+        overflow:'hidden',touchAction:'none',overscrollBehavior:'none'}}>
+        <BackButton onClick={onBack} />
+        <Particles particles={particles} />
+        {/* confetti rain */}
+        {confetti.map(c => (
+          <div key={c.id} style={{
+            position:'fixed',left:c.x+'%',top:-20,
+            width:c.size,height:c.size,borderRadius:'50%',background:c.color,
+            animation:`confettiFall ${c.dur}s ease-in ${c.delay}s infinite`,
+            zIndex:5,pointerEvents:'none'
+          }} />
+        ))}
+        <div style={{fontSize:80,animation:'trophySpin 2s ease-in-out infinite',zIndex:10}}>🏆</div>
+        <div style={{
+          fontFamily:"'Fredoka One',cursive",fontSize:'clamp(32px,8vw,48px)',
+          color:'#FF69B4',textShadow:'0 0 20px rgba(255,105,180,0.5)',
+          marginTop:20,zIndex:10
+        }}>Great! Aria Knows Her Numbers! 🎉</div>
+        <div role="button"
+          onClick={resetGame}
+          style={{
+            marginTop:30,padding:'16px 40px',borderRadius:30,
+            background:'linear-gradient(135deg,#FF69B4,#A55EEA)',
+            fontFamily:"'Fredoka One',cursive",fontSize:22,color:'white',
+            boxShadow:'0 6px 20px rgba(255,105,180,0.4)',cursor:'pointer',
+            transition:'transform 0.2s',zIndex:10
+          }}
+          onMouseDown={e => e.currentTarget.style.transform='scale(0.95)'}
+          onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+        >Play Again</div>
+      </div>
+    );
+  }
+
+  const icons = Array.from({length:currentNum}, (_, i) => (
+    <span key={i} style={{
+      fontSize: currentNum > 10 ? 22 : 28,
+      margin:4,
+      animation:`float ${2 + (i%3)*0.5}s ease-in-out ${i*0.1}s infinite`,
+      display:'inline-block'
+    }}>{NUMBER_ICONS[currentNum]}</span>
+  ));
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,display:'flex',
+      flexDirection:'column',alignItems:'center',paddingTop:'max(50px, env(safe-area-inset-top, 20px))',
+      overflow:'hidden',touchAction:'none',overscrollBehavior:'none'}}>
+      <BackButton onClick={onBack} />
+      <Particles particles={particles} />
+
+      {/* Progress bar */}
+      <div style={{
+        position:'absolute',top:16,right:16,left:80,height:12,borderRadius:8,
+        background:'rgba(255,255,255,0.3)',overflow:'hidden',zIndex:40
+      }}>
+        <div style={{
+          height:'100%',borderRadius:8,transition:'width 0.5s ease',
+          width:(currentNum/20*100)+'%',
+          background:'linear-gradient(90deg,#FF69B4,#FFB6C1)'
+        }} />
+      </div>
+
+      <div style={{fontFamily:"'Nunito',sans-serif",fontSize:16,color:'rgba(255,255,255,0.8)',
+        marginBottom:10}}>
+        Number {currentNum} of 20
+      </div>
+
+      <div key={currentNum}
+        style={{
+          display:'flex',flexDirection:'column',alignItems:'center',
+          animation: sliding ? 'none' : 'slideLeft 0.4s ease-out'
+        }}>
+        {/* Big number — tappable to hear pronunciation */}
+        <div role="button"
+          onClick={() => speakNumber(NUMBER_WORDS[currentNum])}
+          onTouchEnd={() => speakNumber(NUMBER_WORDS[currentNum])}
+          style={{
+            fontFamily:"'Fredoka One',cursive",
+            fontSize:'clamp(100px,28vw,220px)',
+            color:NUMBER_COLORS[currentNum],
+            textShadow:`0 0 30px ${NUMBER_COLORS[currentNum]}66, 0 0 60px ${NUMBER_COLORS[currentNum]}33`,
+            animation:'pulse 2s ease-in-out infinite',
+            lineHeight:1,cursor:'pointer'
+          }}>
+          {currentNum}
+        </div>
+
+        {/* Word */}
+        <div role="button"
+          onClick={() => speakNumber(NUMBER_WORDS[currentNum])}
+          onTouchEnd={() => speakNumber(NUMBER_WORDS[currentNum])}
+          style={{
+            fontFamily:"'Fredoka One',cursive",fontSize:'clamp(28px,7vw,40px)',
+            color:COLORS.white,textShadow:'0 2px 10px rgba(0,0,0,0.15)',
+            marginTop:-10,cursor:'pointer'
+          }}>
+          {NUMBER_WORDS[currentNum]}
+        </div>
+
+        {/* Icons */}
+        <div style={{
+          display:'flex',flexWrap:'wrap',justifyContent:'center',
+          maxWidth:300,marginTop:16
+        }}>
+          {icons}
+        </div>
+
+        {/* Tap button */}
+        <div role="button"
+          onClick={handleTap}
+          style={{
+            marginTop:30,padding:'18px 50px',borderRadius:30,
+            background:'linear-gradient(135deg,#FF69B4,#FFB6C1)',
+            fontFamily:"'Fredoka One',cursive",fontSize:26,color:'white',
+            boxShadow:'0 6px 25px rgba(255,105,180,0.5)',cursor:'pointer',
+            animation:'pulse 1.5s ease-in-out infinite',
+            transition:'transform 0.2s'
+          }}
+          onMouseDown={e => e.currentTarget.style.transform='scale(0.95)'}
+          onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+        >
+          TAP! 👆
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── DRAWING SCREEN ─── */
+const DRAW_COLORS = [
+  {name:'Red',color:'#FF4444'},
+  {name:'Pink',color:'#FF69B4'},
+  {name:'Blue',color:'#4488FF'},
+  {name:'Green',color:'#44CC44'},
+  {name:'Purple',color:'#A55EEA'},
+  {name:'Black',color:'#222222'}
+];
+function DrawScreen({ onBack }) {
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const lastPosRef = useRef(null);
+  const [selectedColor, setSelectedColor] = useState('#FF69B4');
+  const [mixMode, setMixMode] = useState(false);
+  const mixHueRef = useRef(0);
+
+  // Mix mode — smoothly cycle hue every animation frame
+  useEffect(() => {
+    if (!mixMode) return;
+    let raf;
+    const step = () => {
+      mixHueRef.current = (mixHueRef.current + 0.5) % 360;
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [mixMode]);
+
+  const getColor = useCallback(() => {
+    if (mixMode) return `hsl(${Math.round(mixHueRef.current)}, 85%, 55%)`;
+    return selectedColor;
+  }, [mixMode, selectedColor]);
+
+  const getPos = useCallback((e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }, []);
+
+  const startDraw = useCallback((e) => {
+    e.preventDefault();
+    drawingRef.current = true;
+    const pos = getPos(e);
+    if (pos) lastPosRef.current = pos;
+  }, [getPos]);
+
+  const draw = useCallback((e) => {
+    e.preventDefault();
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx) return;
+    const pos = getPos(e);
+    if (!pos) return;
+    const last = lastPosRef.current || pos;
+    ctx.beginPath();
+    ctx.moveTo(last.x, last.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.strokeStyle = getColor();
+    ctx.lineWidth = 8;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    lastPosRef.current = pos;
+  }, [getPos, getColor]);
+
+  const stopDraw = useCallback(() => {
+    drawingRef.current = false;
+    lastPosRef.current = null;
+  }, []);
+
+  const clearCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  // Initialize canvas white
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = 800;
+    canvas.height = 1000;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, 800, 1000);
+  }, []);
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,display:'flex',flexDirection:'column',
+      overflow:'hidden',touchAction:'none',overscrollBehavior:'none'}}>
+      <BackButton onClick={onBack} />
+
+      {/* Title bar */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+        paddingTop:14,paddingBottom:6}}>
+        <span style={{fontFamily:"'Fredoka One',cursive",fontSize:22,color:'#FF69B4',
+          textShadow:'0 0 10px rgba(255,105,180,0.3)'}}>
+          🎨 Draw & Color!
+        </span>
+        <div role="button" onClick={clearCanvas}
+          style={{
+            background:'linear-gradient(135deg,#FF6B6B,#FF9F43)',
+            padding:'6px 16px',borderRadius:20,cursor:'pointer',
+            fontFamily:"'Fredoka One',cursive",fontSize:12,color:'white',
+            boxShadow:'0 3px 10px rgba(255,107,107,0.3)'
+          }}>
+          🗑️ Clear
+        </div>
+      </div>
+
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        {/* Color palette sidebar */}
+        <div style={{width:'min(64px, 16vw)',minWidth:44,display:'flex',flexDirection:'column',alignItems:'center',
+          gap:6,paddingTop:6,paddingBottom:6,overflowY:'auto'}}>
+          {DRAW_COLORS.map(c => (
+            <div key={c.color} role="button"
+              onClick={() => { setSelectedColor(c.color); setMixMode(false); }}
+              onTouchEnd={(e) => { e.stopPropagation(); setSelectedColor(c.color); setMixMode(false); }}
+              style={{
+                width:'min(44px, 11vw)',height:'min(44px, 11vw)',borderRadius:14,background:c.color,cursor:'pointer',
+                border: !mixMode && selectedColor === c.color ? '3px solid #FFD700' : '3px solid rgba(255,255,255,0.5)',
+                boxShadow: !mixMode && selectedColor === c.color
+                  ? `0 0 15px ${c.color}88, 0 0 5px #FFD700`
+                  : `0 2px 8px ${c.color}33`,
+                transition:'transform 0.15s, border 0.15s',
+                transform: !mixMode && selectedColor === c.color ? 'scale(1.1)' : 'scale(1)',
+                display:'flex',alignItems:'center',justifyContent:'center'
+              }}>
+              {!mixMode && selectedColor === c.color &&
+                <span style={{fontSize:16}}>✓</span>}
+            </div>
+          ))}
+        </div>
+
+        {/* Canvas area */}
+        <div style={{flex:1,padding:'0 8px 8px 0',display:'flex'}}>
+          <canvas ref={canvasRef}
+            onMouseDown={startDraw}
+            onMouseMove={draw}
+            onMouseUp={stopDraw}
+            onMouseLeave={stopDraw}
+            onTouchStart={startDraw}
+            onTouchMove={draw}
+            onTouchEnd={stopDraw}
+            onTouchCancel={stopDraw}
+            style={{
+              width:'100%',height:'100%',
+              borderRadius:20,
+              boxShadow:'0 4px 20px rgba(0,0,0,0.1), inset 0 0 0 2px rgba(255,182,193,0.3)',
+              background:'white',
+              cursor:'crosshair',
+              touchAction:'none'
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Dedicated MIX RAINBOW button — fixed at bottom */}
+      <div style={{
+        padding:'8px 16px',display:'flex',justifyContent:'center',
+        background:'rgba(255,255,255,0.1)'
+      }}>
+        <div role="button"
+          onClick={() => setMixMode(prev => !prev)}
+          onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); setMixMode(prev => !prev); }}
+          style={{
+            width:'100%',maxWidth:320,height:52,borderRadius:30,cursor:'pointer',
+            background: mixMode
+              ? 'linear-gradient(90deg,#FF4444,#FF9F43,#FECA57,#44CC44,#4488FF,#A55EEA,#FF69B4)'
+              : 'linear-gradient(90deg,#FF444488,#FF9F4388,#FECA5788,#44CC4488,#4488FF88,#A55EEA88,#FF69B488)',
+            backgroundSize: mixMode ? '200% 100%' : '100% 100%',
+            animation: mixMode ? 'gradientShift 3s linear infinite' : 'none',
+            border: mixMode ? '3px solid #FFD700' : '3px solid rgba(255,255,255,0.4)',
+            boxShadow: mixMode
+              ? '0 0 25px rgba(255,105,180,0.5), 0 0 50px rgba(165,94,234,0.3)'
+              : '0 4px 15px rgba(0,0,0,0.1)',
+            display:'flex',alignItems:'center',justifyContent:'center',gap:8,
+            fontFamily:"'Fredoka One',cursive",fontSize:18,color:'white',
+            textShadow:'0 2px 4px rgba(0,0,0,0.3)',
+            transition:'border 0.2s, box-shadow 0.2s'
+          }}>
+          <span style={{fontSize:22}}>🌈</span>
+          {mixMode ? 'RAINBOW ON!' : 'Rainbow Mix'}
+          <span style={{fontSize:22}}>🌈</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── CARTOONS SCREEN — TikTok-style vertical swipe ─── */
+const CARTOONS = [
+  {id:'75p-N9YKqNo',title:'CoComelon - Wheels on the Bus'},
+  {id:'e_04ZrNroTo',title:'Pinkfong - Baby Shark Dance'},
+  {id:'7mR81x2Fk7g',title:'Hey Bear - Dancing Fruit 1 Hour'},
+  {id:'NPCgeuIPGTI',title:'Hey Bear - Funky Veggies Dance Party'},
+  {id:'ALaQvK7KZOY',title:'Hey Bear - Colors and Counting'},
+  {id:'0uZ4I3o-5eY',title:'CoComelon - Twinkle Twinkle Little Star'},
+  {id:'kAxdvigZtw8',title:'Hey Bear - Best of Fruit & Veggies'},
+  {id:'w08k0bq4O4o',title:'Hey Bear - Rainbow Summertime'},
+  {id:'5HOTTORooSA',title:'CoComelon - 12345 Once I Caught a Fish'},
+  {id:'6vR4LzZuzxc',title:'Hey Bear - Avocadosaurus Dance Party'},
+  {id:'b7-C8Mzl7gc',title:'Hey Bear - Dancing Fruit & Veggies Mini'},
+  {id:'WlO2G0HzBPE',title:'CoComelon - Yes Yes Get Dressed Song'},
+  {id:'0jW1XKc_e1o',title:'Choo-Choo - Leo & the Train'},
+  {id:'hbTWlsyxHuA',title:'Choo-Choo Train Cartoons 30min'},
+  {id:'guYjvSHbXms',title:'Choo-Choo Train Song'},
+  {id:'dZUq8hpKICY',title:'Choo-Choo - Find the Animal'},
+];
+
+function CartoonScreen({ onBack, startIdx = 0 }) {
+  const [currentIdx, setCurrentIdx] = useState(startIdx);
+
+  const goNext = useCallback(() => {
+    setCurrentIdx(prev => (prev + 1) % CARTOONS.length);
+  }, []);
+
+  const goPrev = useCallback(() => {
+    setCurrentIdx(prev => (prev - 1 + CARTOONS.length) % CARTOONS.length);
+  }, []);
+
+  const video = CARTOONS[currentIdx];
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,display:'flex',flexDirection:'column',
+      overflow:'hidden',background:'#111'}}>
+      <BackButton onClick={onBack} />
+
+      {/* Video player */}
+      <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+        <iframe
+          key={video.id}
+          src={`https://www.youtube.com/embed/${video.id}?autoplay=1&mute=0&playsinline=1&rel=0&modestbranding=1&controls=1`}
+          style={{width:'100%',height:'100%',border:'none'}}
+          allow="autoplay; encrypted-media; picture-in-picture"
+          allowFullScreen
+        />
+
+        {/* Previous button — left side */}
+        {currentIdx > 0 && (
+          <div role="button"
+            onClick={goPrev}
+            style={{
+              position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',zIndex:25,
+              width:50,height:50,borderRadius:'50%',cursor:'pointer',
+              background:'linear-gradient(135deg,#E6CCFF,#FFB6C1)',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              boxShadow:'0 4px 15px rgba(0,0,0,0.4)',
+              fontSize:22
+            }}>
+            ▲
+          </div>
+        )}
+
+        {/* Next button — right side */}
+        <div role="button"
+          onClick={goNext}
+          style={{
+            position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',zIndex:25,
+            width:50,height:50,borderRadius:'50%',cursor:'pointer',
+            background:'linear-gradient(135deg,#FF69B4,#A55EEA)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            boxShadow:'0 4px 15px rgba(0,0,0,0.4)',
+            fontSize:22,
+            animation:'pulse 2s ease-in-out infinite'
+          }}>
+          ▼
+        </div>
+      </div>
+
+      {/* Bottom control bar */}
+      <div style={{
+        padding:'8px 10px',
+        background:'linear-gradient(135deg,rgba(255,105,180,0.15),rgba(165,94,234,0.15))',
+        display:'flex',alignItems:'center',gap:6
+      }}>
+        {/* Big Previous button */}
+        <div role="button"
+          onClick={goPrev}
+          style={{
+            width:52,height:52,borderRadius:18,cursor:'pointer',
+            background: currentIdx > 0 ? 'linear-gradient(135deg,#E6CCFF,#AED6F1)' : 'rgba(255,255,255,0.1)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            boxShadow: currentIdx > 0 ? '0 4px 12px rgba(230,204,255,0.4)' : 'none',
+            fontSize:20,
+            opacity: currentIdx > 0 ? 1 : 0.3
+          }}>
+          ⬅️
+        </div>
+
+        {/* Title + counter */}
+        <div style={{flex:1,textAlign:'center',minWidth:0}}>
+          <div style={{
+            fontFamily:"'Fredoka One',cursive",fontSize:14,color:'#FFB6C1',
+            whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'
+          }}>
+            {video.title}
+          </div>
+          <div style={{
+            fontFamily:"'Nunito',sans-serif",fontSize:11,color:'rgba(255,255,255,0.5)',
+            marginTop:2
+          }}>
+            {currentIdx + 1} / {CARTOONS.length}
+          </div>
+        </div>
+
+        {/* Big Next button */}
+        <div role="button"
+          onClick={goNext}
+          style={{
+            width:52,height:52,borderRadius:18,cursor:'pointer',
+            background:'linear-gradient(135deg,#FF69B4,#A55EEA)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            boxShadow:'0 4px 12px rgba(255,105,180,0.4)',
+            fontSize:20,
+            animation:'pulse 2s ease-in-out infinite'
+          }}>
+          ➡️
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ─── SHAPE POPPERS ─── */
+const SHAPE_COLORS = ['#FF1493','#1E90FF','#FFD700','#32CD32','#FF7F50','#DA70D6','#20B2AA'];
+const SHAPE_TYPES = ['circle','square','star','heart'];
+
+function playPopSound() {
+  const ctx = getAudioContext();
+  const t = ctx.currentTime;
+  const startFreq = 900 + Math.random() * 200;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(startFreq, t);
+  osc.frequency.exponentialRampToValueAtTime(400, t + 0.2);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.3, t + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.22);
+}
+
+function playTingSound() {
+  const ctx = getAudioContext();
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(1600 + Math.random() * 400, t);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.2, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.16);
+}
+
+function createShape(id, w, h) {
+  return {
+    id,
+    type: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)],
+    color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)],
+    x: 40 + Math.random() * (w - 140),
+    y: 20 + Math.random() * (h * 0.35),
+    vx: (Math.random() - 0.5) * 120,
+    vy: Math.random() * 80,
+    size: 90
+  };
+}
+
+function ShapePoppers({ onBack }) {
+  const shapesRef = useRef([]);
+  const effectsRef = useRef([]);
+  const scoreRef = useRef(0);
+  const [, forceUpdate] = useState(0);
+  const rafRef = useRef(null);
+  const activeRef = useRef(true);
+  const nextId = useRef(0);
+  const effectId = useRef(0);
+  const containerRef = useRef(null);
+
+  // Initialize shapes
+  useEffect(() => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    shapesRef.current = Array.from({length: 7}, () => createShape(nextId.current++, w, h));
+    activeRef.current = true;
+
+    const tick = () => {
+      if (!activeRef.current) return;
+      const dt = 1 / 60;
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const shapes = shapesRef.current;
+
+      for (let i = 0; i < shapes.length; i++) {
+        const s = shapes[i];
+        if (s.popping) continue;
+        // Gravity
+        s.vy += 300 * dt;
+        // Slight random drift
+        s.vx += (Math.random() - 0.5) * 8;
+        // Move
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        // Bounce walls
+        if (s.x < 20) { s.x = 20; s.vx = Math.abs(s.vx) * 0.85; }
+        if (s.x > W - 20 - s.size) { s.x = W - 20 - s.size; s.vx = -Math.abs(s.vx) * 0.85; }
+        if (s.y < 20) { s.y = 20; s.vy = Math.abs(s.vy) * 0.85; }
+        if (s.y > H - 20 - s.size) { s.y = H - 20 - s.size; s.vy = -Math.abs(s.vy) * 0.85; }
+      }
+
+      // Cleanup old effects
+      const now = Date.now();
+      effectsRef.current = effectsRef.current.filter(e => now - e.born < e.dur);
+
+      forceUpdate(n => n + 1);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      activeRef.current = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  const popShape = useCallback((idx) => {
+    const s = shapesRef.current[idx];
+    if (!s || s.popping) return;
+    getAudioContext();
+    playPopSound();
+    playTingSound();
+    scoreRef.current++;
+
+    const cx = s.x + s.size / 2;
+    const cy = s.y + s.size / 2;
+    const now = Date.now();
+
+    // Burst particles
+    for (let i = 0; i < 16; i++) {
+      const angle = (Math.PI * 2 * i) / 16 + (Math.random() - 0.5) * 0.3;
+      const speed = 150 + Math.random() * 100;
+      effectsRef.current.push({
+        id: effectId.current++, type: 'particle',
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        color: s.color, size: 10, born: now, dur: 600
+      });
+    }
+    // Confetti
+    for (let i = 0; i < 12; i++) {
+      effectsRef.current.push({
+        id: effectId.current++, type: 'confetti',
+        x: cx + (Math.random() - 0.5) * 30,
+        y: cy,
+        drift: (Math.random() - 0.5) * 50,
+        color: SHAPE_COLORS[Math.floor(Math.random() * SHAPE_COLORS.length)],
+        size: 6 + Math.random() * 6, rot: Math.random() * 360,
+        born: now, dur: 800
+      });
+    }
+    // Glow
+    effectsRef.current.push({
+      id: effectId.current++, type: 'glow',
+      x: cx, y: cy, color: s.color, born: now, dur: 400
+    });
+
+    // Respawn
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    shapesRef.current[idx] = createShape(nextId.current++, w, h);
+  }, []);
+
+  const shapes = shapesRef.current;
+  const effects = effectsRef.current;
+  const now = Date.now();
+
+  return (
+    <div data-game-lock ref={containerRef} style={{
+      position:'fixed',inset:0,zIndex:10,overflow:'hidden',touchAction:'none',
+      background:'linear-gradient(180deg, #FFE4B5, #F0FFFF)',
+      cursor:'pointer'
+    }}>
+      <BackButton onClick={onBack} />
+
+      {/* Score */}
+      <div style={{
+        position:'absolute',top:16,right:16,zIndex:40,
+        fontFamily:"'Fredoka One',cursive",fontSize:48,color:'#999',
+        pointerEvents:'none'
+      }}>
+        {scoreRef.current}
+      </div>
+
+      {/* Glow effects */}
+      {effects.filter(e => e.type === 'glow').map(e => {
+        const age = (now - e.born) / e.dur;
+        return (
+          <div key={e.id} style={{
+            position:'absolute',
+            left: e.x - 75, top: e.y - 75,
+            width: 150, height: 150,
+            borderRadius: '50%',
+            background: `radial-gradient(circle, ${e.color}cc, transparent 70%)`,
+            transform: `scale(${age * 2})`,
+            opacity: 0.8 * (1 - age),
+            pointerEvents: 'none'
+          }} />
+        );
+      })}
+
+      {/* Shapes */}
+      {shapes.map((s, idx) => (
+        <div key={s.id} role="button"
+          onClick={(e) => { e.stopPropagation(); popShape(idx); }}
+          onTouchStart={(e) => { e.stopPropagation(); popShape(idx); }}
+          style={{
+            position:'absolute',
+            left: s.x, top: s.y,
+            width: s.size, height: s.size,
+            cursor:'pointer',
+            zIndex: 20,
+            transition:'transform 0.1s',
+            padding: 10,
+            margin: -10
+          }}
+          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.2)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          {s.type === 'circle' && (
+            <div style={{width:'100%',height:'100%',borderRadius:'50%',background:s.color,
+              boxShadow:`0 2px 8px rgba(0,0,0,0.2)`}} />
+          )}
+          {s.type === 'square' && (
+            <div style={{width:'100%',height:'100%',borderRadius:14,background:s.color,
+              boxShadow:`0 2px 8px rgba(0,0,0,0.2)`}} />
+          )}
+          {s.type === 'star' && (
+            <svg viewBox="0 0 100 100" style={{width:'100%',height:'100%',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.2))'}}>
+              <polygon points="50,5 61,35 95,35 68,57 79,90 50,70 21,90 32,57 5,35 39,35"
+                fill={s.color} />
+            </svg>
+          )}
+          {s.type === 'heart' && (
+            <svg viewBox="0 0 100 100" style={{width:'100%',height:'100%',filter:'drop-shadow(0 2px 8px rgba(0,0,0,0.2))'}}>
+              <path d="M50,88 C25,65 5,50 5,30 C5,12 20,2 35,2 C43,2 48,8 50,12 C52,8 57,2 65,2 C80,2 95,12 95,30 C95,50 75,65 50,88Z"
+                fill={s.color} />
+            </svg>
+          )}
+        </div>
+      ))}
+
+      {/* Burst particles */}
+      {effects.filter(e => e.type === 'particle').map(e => {
+        const age = (now - e.born) / e.dur;
+        const ca = Math.min(age, 1);
+        return (
+          <div key={e.id} style={{
+            position:'absolute',
+            left: e.x + e.vx * ca - 5,
+            top: e.y + e.vy * ca - 5,
+            width: e.size, height: e.size,
+            borderRadius: '50%',
+            background: e.color,
+            opacity: 1 - ca,
+            boxShadow: `0 0 6px ${e.color}88`,
+            pointerEvents: 'none'
+          }} />
+        );
+      })}
+
+      {/* Confetti */}
+      {effects.filter(e => e.type === 'confetti').map(e => {
+        const age = (now - e.born) / e.dur;
+        const ca = Math.min(age, 1);
+        return (
+          <div key={e.id} style={{
+            position:'absolute',
+            left: e.x + e.drift * ca,
+            top: e.y + ca * 200,
+            width: e.size, height: e.size * 1.4,
+            background: e.color,
+            borderRadius: 2,
+            opacity: 1 - ca,
+            transform: `rotate(${e.rot + ca * 540}deg)`,
+            pointerEvents: 'none'
+          }} />
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── CATEGORY MENU — diagonal split ─── */
+function CategoryMenu({ onGames, onCartoons }) {
+  useEffect(() => { startLullaby(); return stopLullaby; }, []);
+
+  return (
+    <div style={{position:'relative',zIndex:10,width:'100%',height:'100vh',overflow:'hidden'}}>
+      {/* Diagonal split — Games (top-left triangle) */}
+      <div role="button" onClick={onGames}
+        style={{
+          position:'absolute',top:0,left:0,width:'100%',height:'100%',
+          clipPath:'polygon(0 0, 100% 0, 0 100%)',
+          background:'linear-gradient(150deg, #FF69B4, #A55EEA)',
+          cursor:'pointer',
+          transition:'filter 0.2s',zIndex:2
+        }}
+        onMouseDown={e => e.currentTarget.style.filter='brightness(1.15)'}
+        onMouseUp={e => e.currentTarget.style.filter='brightness(1)'}
+      >
+        <div style={{
+          position:'absolute',top:'22%',left:'18%',textAlign:'center'
+        }}>
+          <div style={{fontSize:'clamp(52px,14vw,72px)',animation:'float 3s ease-in-out infinite'}}>🎮</div>
+          <div style={{
+            fontFamily:"'Fredoka One',cursive",fontSize:'clamp(26px,7vw,38px)',
+            color:'white',textShadow:'0 3px 15px rgba(0,0,0,0.25)',
+            marginTop:6
+          }}>Games</div>
+          <div style={{
+            fontFamily:"'Nunito',sans-serif",fontSize:13,color:'rgba(255,255,255,0.8)',
+            marginTop:4
+          }}>🎹 🫧 🔢 🎨 ⭐</div>
+        </div>
+        <div style={{
+          position:'absolute',top:'6%',left:'5%',
+          fontFamily:"'Dancing Script',cursive",fontSize:'clamp(27px,7.5vw,36px)',
+          fontWeight:700,color:'rgba(255,255,255,0.85)',
+          textShadow:'0 2px 8px rgba(0,0,0,0.15)'
+        }}>With love to Princess Aria 💖</div>
+      </div>
+
+      {/* Diagonal split — Cartoons (bottom-right triangle) */}
+      <div role="button" onClick={onCartoons}
+        style={{
+          position:'absolute',top:0,left:0,width:'100%',height:'100%',
+          clipPath:'polygon(100% 0, 100% 100%, 0 100%)',
+          background:'linear-gradient(150deg, #87CEEB, #0ABDE3)',
+          cursor:'pointer',
+          transition:'filter 0.2s',zIndex:2
+        }}
+        onMouseDown={e => e.currentTarget.style.filter='brightness(1.15)'}
+        onMouseUp={e => e.currentTarget.style.filter='brightness(1)'}
+      >
+        <div style={{
+          position:'absolute',bottom:'22%',right:'18%',textAlign:'center'
+        }}>
+          <div style={{fontSize:'clamp(52px,14vw,72px)',animation:'float 3s ease-in-out 0.5s infinite'}}>📺</div>
+          <div style={{
+            fontFamily:"'Fredoka One',cursive",fontSize:'clamp(26px,7vw,38px)',
+            color:'white',textShadow:'0 3px 15px rgba(0,0,0,0.25)',
+            marginTop:6
+          }}>Cartoons</div>
+          <div style={{
+            fontFamily:"'Nunito',sans-serif",fontSize:13,color:'rgba(255,255,255,0.8)',
+            marginTop:4
+          }}>🎬 Baby Shows 🍿</div>
+        </div>
+      </div>
+
+      {/* Diagonal line glow */}
+      <div style={{
+        position:'absolute',top:0,left:0,width:'100%',height:'100%',
+        background:'linear-gradient(135deg, transparent 48.5%, rgba(255,255,255,0.5) 49.5%, rgba(255,255,255,0.5) 50.5%, transparent 51.5%)',
+        pointerEvents:'none',zIndex:3
+      }} />
+    </div>
+  );
+}
+
+/* ─── CARTOON BROWSER — grid of cartoon tiles ─── */
+function CartoonBrowser({ onSelect, onBack }) {
+  return (
+    <div style={{position:'relative',zIndex:10,display:'flex',flexDirection:'column',
+      minHeight:'100vh',padding:'20px 16px',overflowY:'auto',
+      WebkitOverflowScrolling:'touch'}}>
+      <BackButton onClick={onBack} />
+      <div style={{
+        fontFamily:"'Fredoka One',cursive",fontSize:'clamp(24px,6vw,32px)',
+        color:'#FF69B4',textShadow:'0 0 10px rgba(255,105,180,0.3)',
+        textAlign:'center',marginTop:50,marginBottom:20
+      }}>
+        📺 Aria's Cartoons
+      </div>
+      <div style={{
+        display:'grid',gridTemplateColumns:'repeat(2, 1fr)',
+        gap:12
+      }}>
+        {CARTOONS.map((c, i) => (
+          <div key={c.id} role="button" onClick={() => onSelect(i)}
+            style={{
+              background:'linear-gradient(135deg, rgba(135,206,235,0.3), rgba(174,214,241,0.3))',
+              borderRadius:20,padding:14,cursor:'pointer',
+              boxShadow:'0 4px 12px rgba(0,0,0,0.08)',
+              display:'flex',flexDirection:'column',alignItems:'center',
+              justifyContent:'center',minHeight:100,
+              transition:'transform 0.15s, box-shadow 0.15s',
+              border:'2px solid rgba(255,255,255,0.3)'
+            }}
+            onMouseDown={e => e.currentTarget.style.transform='scale(0.95)'}
+            onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
+          >
+            <span style={{fontSize:36,marginBottom:6}}>
+              {c.title.includes('Hey Bear') ? '🐻' : c.title.includes('Pinkfong') ? '🦈' : c.title.includes('Choo') ? '🚂' : '👶'}
+            </span>
+            <span style={{
+              fontFamily:"'Nunito',sans-serif",fontSize:'clamp(11px,3vw,14px)',
+              fontWeight:700,color:'#444',textAlign:'center',lineHeight:1.2
+            }}>{c.title}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{height:20}} />
+    </div>
+  );
+}
+
+/* ─── MAGIC TOUCH GARDEN ─── */
+const GARDEN_OBJECTS = [
+  {type:'star',emoji:'⭐',color:'#FFD700',label:'Star'},
+  {type:'flower',emoji:'🌸',color:'#FF69B4',label:'Flower'},
+  {type:'butterfly',emoji:'🦋',color:'#00BFFF',label:'Butterfly'},
+  {type:'mushroom',emoji:'🍄',color:'#FF3333',label:'Mushroom'},
+  {type:'rainbow',emoji:'🌈',color:'#A855F7',label:'Rainbow'},
+  {type:'crystal',emoji:'💎',color:'#00FFFF',label:'Crystal'}
+];
+const GARDEN_PARTICLE_COLORS = ['#FF6B6B','#FFE66D','#4ECDC4','#A8E6CF','#FF8B94','#FFA3D7','#B8F0FF'];
+const REWARD_EMOJIS = ['🌟','🎉','💥','✨','🎊','🦄','🍭','🎈'];
+
+function playGardenSound(type) {
+  const ctx = getAudioContext();
+  const t = ctx.currentTime;
+  if (type === 'star') {
+    const o = ctx.createOscillator(); o.type='sine';
+    o.frequency.setValueAtTime(880,t); o.frequency.linearRampToValueAtTime(1320,t+0.2);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.3,t); g.gain.linearRampToValueAtTime(0,t+0.3);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+0.32);
+  } else if (type === 'flower') {
+    [523,659,784].forEach((f,i) => {
+      const o = ctx.createOscillator(); o.type='sine'; o.frequency.value=f;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.2,t+i*0.08); g.gain.linearRampToValueAtTime(0,t+i*0.08+0.4);
+      o.connect(g); g.connect(ctx.destination); o.start(t+i*0.08); o.stop(t+i*0.08+0.42);
+    });
+  } else if (type === 'butterfly') {
+    const o = ctx.createOscillator(); o.type='sine'; o.frequency.value=750;
+    const lfo = ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value=20;
+    const lg = ctx.createGain(); lg.gain.value=150;
+    lfo.connect(lg); lg.connect(o.frequency);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.2,t); g.gain.linearRampToValueAtTime(0,t+0.3);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t+0.32); lfo.start(t); lfo.stop(t+0.32);
+  } else if (type === 'mushroom') {
+    const o = ctx.createOscillator(); o.type='sine';
+    o.frequency.setValueAtTime(200,t); o.frequency.exponentialRampToValueAtTime(80,t+0.4);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.35,t); g.gain.linearRampToValueAtTime(0,t+0.5);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+0.52);
+  } else if (type === 'rainbow') {
+    const o = ctx.createOscillator(); o.type='triangle';
+    o.frequency.setValueAtTime(300,t); o.frequency.linearRampToValueAtTime(1200,t+0.6);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.2,t);
+    g.gain.setValueAtTime(0.15,t+0.4); g.gain.linearRampToValueAtTime(0,t+0.6);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+0.62);
+  } else if (type === 'crystal') {
+    const o = ctx.createOscillator(); o.type='sine'; o.frequency.value=1046;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.3,t); g.gain.exponentialRampToValueAtTime(0.01,t+1);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+1.05);
+  }
+}
+
+function spawnGardenObj(id, existing) {
+  const obj = GARDEN_OBJECTS[Math.floor(Math.random()*GARDEN_OBJECTS.length)];
+  let x, y, tries = 0;
+  do {
+    x = 10 + Math.random() * 80;
+    y = 15 + Math.random() * 55;
+    tries++;
+  } while (tries < 10 && existing.some(e => Math.abs(e.x-x)<15 && Math.abs(e.y-y)<15));
+  return {
+    id, ...obj,
+    x, y,
+    phase: Math.random() * Math.PI * 2,
+    speed: 3 + Math.random() * 3,
+    born: Date.now()
+  };
+}
+
+function GardenScreen({ onBack }) {
+  const [objects, setObjects] = useState([]);
+  const [effects, setEffects] = useState([]);
+  const [flash, setFlash] = useState(null);
+  const [score, setScore] = useState(0);
+  const [scorePop, setScorePop] = useState(false);
+  const effectId = useRef(0);
+  const objId = useRef(0);
+
+  const [tick, setTick] = useState(0);
+
+  // Init objects + animation loop
+  useEffect(() => {
+    const init = [];
+    for (let i = 0; i < 7; i++) init.push(spawnGardenObj(objId.current++, init));
+    setObjects(init);
+    let raf;
+    const loop = () => { setTick(n => n+1); raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Cleanup effects
+  useEffect(() => {
+    const t = setInterval(() => {
+      setEffects(prev => prev.filter(e => Date.now() - e.born < e.dur));
+    }, 400);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleTap = useCallback((obj, idx) => {
+    getAudioContext();
+    playGardenSound(obj.type);
+
+    // Flash
+    setFlash(obj.color);
+    setTimeout(() => setFlash(null), 300);
+
+    // Score
+    setScore(prev => prev + 1);
+    setScorePop(true);
+    setTimeout(() => setScorePop(false), 300);
+
+    const cx = obj.x;
+    const cy = obj.y;
+    const now = Date.now();
+    const newFx = [];
+
+    // 22 particles
+    for (let i = 0; i < 22; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 60 + Math.random() * 120;
+      newFx.push({
+        id: effectId.current++, type:'particle',
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        color: GARDEN_PARTICLE_COLORS[Math.floor(Math.random()*GARDEN_PARTICLE_COLORS.length)],
+        size: 8 + Math.random() * 12,
+        born: now, dur: 700
+      });
+    }
+
+    // Reward emoji
+    newFx.push({
+      id: effectId.current++, type:'reward',
+      x: cx, y: cy,
+      emoji: REWARD_EMOJIS[Math.floor(Math.random()*REWARD_EMOJIS.length)],
+      born: now, dur: 1000
+    });
+
+    // Shockwave ring
+    newFx.push({
+      id: effectId.current++, type:'ring',
+      x: cx, y: cy, color: obj.color,
+      born: now, dur: 400
+    });
+
+    setEffects(prev => [...prev, ...newFx]);
+
+    // Respawn object after delay
+    setObjects(prev => {
+      const next = [...prev];
+      setTimeout(() => {
+        setObjects(p => {
+          const n = [...p];
+          const i = n.findIndex(o => o.id === obj.id);
+          if (i !== -1) n[i] = spawnGardenObj(objId.current++, n);
+          return n;
+        });
+      }, 600);
+      // Mark as tapped
+      next[idx] = {...next[idx], tapped: true};
+      return next;
+    });
+  }, []);
+
+  const now = Date.now();
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,overflow:'hidden',
+      touchAction:'none',overscrollBehavior:'none'}}>
+
+      {/* Animated sky */}
+      <div style={{
+        position:'absolute',inset:0,
+        background:'linear-gradient(180deg, #87CEEB, #AED6F1, #7BC67E)',
+        backgroundSize:'100% 100%'
+      }} />
+
+      {/* Hills */}
+      <div style={{position:'absolute',bottom:0,left:'-10%',width:'120%',height:'30%',
+        borderRadius:'50% 50% 0 0',background:'#7BC67E',zIndex:2}} />
+      <div style={{position:'absolute',bottom:0,left:'20%',width:'100%',height:'25%',
+        borderRadius:'50% 50% 0 0',background:'#5AAF5E',zIndex:3}} />
+      <div style={{position:'absolute',bottom:0,left:'-20%',width:'100%',height:'20%',
+        borderRadius:'50% 50% 0 0',background:'#3D9142',zIndex:4}} />
+
+      {/* Clouds */}
+      <div style={{position:'absolute',top:'8%',width:100,height:40,borderRadius:40,
+        background:'rgba(255,255,255,0.7)',zIndex:1,
+        animation:'shimmerDrift 20s linear infinite'}} />
+      <div style={{position:'absolute',top:'15%',width:70,height:30,borderRadius:30,
+        background:'rgba(255,255,255,0.5)',zIndex:1,
+        animation:'shimmerDrift 28s linear 5s infinite'}} />
+
+      {/* Twinkling stars in sky */}
+      {[...Array(6)].map((_,i) => (
+        <div key={'ts'+i} style={{
+          position:'absolute',
+          left:(10+i*15)+'%', top:(5+i*4)+'%',
+          fontSize:14, opacity:0.5,
+          animation:`sparkle ${1.5+i*0.3}s ease-in-out ${i*0.4}s infinite`,
+          zIndex:1
+        }}>✦</div>
+      ))}
+
+      <BackButton onClick={onBack} />
+
+      {/* Score */}
+      <div style={{
+        position:'absolute',top:16,right:16,zIndex:40,
+        fontFamily:"'Fredoka One',cursive",fontSize:32,color:'#FFD700',
+        textShadow:'0 2px 8px rgba(0,0,0,0.2)',
+        transform: scorePop ? 'scale(1.4)' : 'scale(1)',
+        transition:'transform 0.15s'
+      }}>
+        ⭐ {score}
+      </div>
+
+      {/* Flash overlay */}
+      {flash && (
+        <div style={{
+          position:'absolute',inset:0,zIndex:45,pointerEvents:'none',
+          background:flash, opacity:0.15,
+          animation:'fadeIn 0.05s ease both'
+        }} />
+      )}
+
+      {/* Garden objects */}
+      {objects.map((obj, idx) => {
+        if (obj.tapped) return null;
+        const drift = Math.sin((now/1000) / obj.speed + obj.phase) * 12;
+        const driftY = Math.cos((now/1000) / (obj.speed*0.8) + obj.phase) * 8;
+        return (
+          <div key={obj.id} role="button"
+            onClick={() => handleTap(obj, idx)}
+            style={{
+              position:'absolute',
+              left: `calc(${obj.x}% + ${drift}px)`,
+              top: `calc(${obj.y}% + ${driftY}px)`,
+              fontSize:'clamp(50px,14vw,70px)',
+              zIndex:20,cursor:'pointer',
+              filter:`drop-shadow(0 0 10px ${obj.color}66)`,
+              animation: obj.type==='flower' ? 'float 2s ease-in-out infinite'
+                : obj.type==='mushroom' ? 'float 1.5s ease-in-out infinite'
+                : obj.type==='star' ? 'spin 4s linear infinite'
+                : obj.type==='crystal' ? 'spin 6s linear infinite'
+                : 'float 3s ease-in-out infinite',
+              transition:'transform 0.1s',
+              padding:10,margin:-10
+            }}
+          >{obj.emoji}</div>
+        );
+      })}
+
+      {/* Effects */}
+      <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:50}}>
+        {effects.map(e => {
+          const age = (now - e.born) / e.dur;
+          const ca = Math.min(age, 1);
+          if (e.type === 'particle') {
+            return (
+              <div key={e.id} style={{
+                position:'absolute',
+                left: (e.x)+'%', top: (e.y)+'%',
+                marginLeft: e.vx * ca, marginTop: e.vy * ca + ca*ca*80,
+                width: e.size*(1-ca*0.7), height: e.size*(1-ca*0.7),
+                borderRadius: '50%', background: e.color,
+                opacity: 1 - ca
+              }} />
+            );
+          }
+          if (e.type === 'reward') {
+            return (
+              <div key={e.id} style={{
+                position:'absolute',
+                left: e.x+'%', top: e.y+'%',
+                marginTop: -ca * 80,
+                fontSize: 50, opacity: 1 - ca,
+                transform: `scale(${ca < 0.15 ? ca/0.15*2 : 1.5-ca*0.5})`
+              }}>{e.emoji}</div>
+            );
+          }
+          if (e.type === 'ring') {
+            return (
+              <div key={e.id} style={{
+                position:'absolute',
+                left: e.x+'%', top: e.y+'%',
+                marginLeft:-25, marginTop:-25,
+                width:50, height:50, borderRadius:'50%',
+                border:`3px solid ${e.color}`,
+                transform: `scale(${1+ca*3})`,
+                opacity: 1 - ca
+              }} />
+            );
+          }
+          return null;
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── COLOR BURST GALAXY ─── */
+const PLANETS = [
+  {type:'earth',emoji:'🌍',color:'#0EA5E9',name:'Earth'},
+  {type:'jupiter',emoji:'🪐',color:'#FBBF24',name:'Jupiter'},
+  {type:'mars',emoji:'🔴',color:'#DC2626',name:'Mars'},
+  {type:'moon',emoji:'🌙',color:'#E5E7EB',name:'Moon'},
+  {type:'sun',emoji:'☀️',color:'#F59E0B',name:'Sun'},
+  {type:'neptune',emoji:'🔵',color:'#6366F1',name:'Neptune'},
+  {type:'star',emoji:'⭐',color:'#FBBF24',name:'Star'},
+  {type:'comet',emoji:'☄️',color:'#F43F5E',name:'Comet'}
+];
+const GALAXY_EMOJIS = ['💥','✨','🌟','🎆','⭐','💫','🌠','🎇'];
+
+function playBigBang() {
+  const ctx = getAudioContext();
+  const t = ctx.currentTime;
+  // Deep boom
+  const boom = ctx.createOscillator(); boom.type='sine';
+  boom.frequency.setValueAtTime(80,t); boom.frequency.exponentialRampToValueAtTime(30,t+0.6);
+  const bg = ctx.createGain(); bg.gain.setValueAtTime(0.4,t); bg.gain.linearRampToValueAtTime(0,t+0.7);
+  boom.connect(bg); bg.connect(ctx.destination); boom.start(t); boom.stop(t+0.72);
+  // Rising shimmer
+  const sh = ctx.createOscillator(); sh.type='sine';
+  sh.frequency.setValueAtTime(300,t+0.05); sh.frequency.linearRampToValueAtTime(1200,t+0.4);
+  const sg = ctx.createGain(); sg.gain.setValueAtTime(0,t+0.05);
+  sg.gain.linearRampToValueAtTime(0.25,t+0.1); sg.gain.linearRampToValueAtTime(0,t+0.5);
+  sh.connect(sg); sg.connect(ctx.destination); sh.start(t+0.05); sh.stop(t+0.52);
+  // Sparkle chime
+  setTimeout(() => playChime(), 150);
+}
+
+function spawnPlanet(id, existing) {
+  const p = PLANETS[Math.floor(Math.random()*PLANETS.length)];
+  let x,y,tries=0;
+  do { x=12+Math.random()*76; y=18+Math.random()*55; tries++; }
+  while(tries<10 && existing.some(e=>Math.abs(e.x-x)<18&&Math.abs(e.y-y)<18));
+  return {id,...p,x,y,phase:Math.random()*Math.PI*2,speed:3+Math.random()*3,tapped:false};
+}
+
+function GalaxyScreen({ onBack }) {
+  const [planets, setPlanets] = useState([]);
+  const [bangs, setBangs] = useState([]);
+  const [flash, setFlash] = useState(null);
+  const [score, setScore] = useState(0);
+  const [scorePop, setScorePop] = useState(false);
+  const [tick, setTick] = useState(0);
+  const bangId = useRef(0);
+  const planetId = useRef(0);
+
+  useEffect(() => {
+    const init=[];for(let i=0;i<6;i++)init.push(spawnPlanet(planetId.current++,init));
+    setPlanets(init);
+    let raf;
+    const loop=()=>{setTick(n=>n+1);raf=requestAnimationFrame(loop);};
+    raf=requestAnimationFrame(loop);
+    return ()=>cancelAnimationFrame(raf);
+  },[]);
+
+  // Cleanup bangs
+  useEffect(() => {
+    const t=setInterval(()=>setBangs(prev=>prev.filter(b=>Date.now()-b.born<1200)),500);
+    return ()=>clearInterval(t);
+  },[]);
+
+  const handleTap = useCallback((planet,idx)=>{
+    if(planet.tapped)return;
+    getAudioContext();
+    playBigBang();
+    setScore(prev=>prev+1);
+    setScorePop(true);
+    setTimeout(()=>setScorePop(false),300);
+    // White flash then color flash
+    setFlash('#FFFFFF');
+    setTimeout(()=>setFlash(planet.color),150);
+    setTimeout(()=>setFlash(null),400);
+
+    const now=Date.now();
+    // Big bang data — rendered with CSS only, no per-particle divs for performance
+    const colors = ['#FF6B6B','#FFE66D','#4ECDC4','#FF8B94','#FFA3D7','#B8F0FF','#FFB6C1','#A855F7','#FBBF24','#FFFFFF'];
+    const particles = Array.from({length:40},()=>{
+      const angle=Math.random()*Math.PI*2;
+      const speed=100+Math.random()*200;
+      return {
+        vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed,
+        color:colors[Math.floor(Math.random()*colors.length)],
+        size:4+Math.random()*10
+      };
+    });
+    const rays = Array.from({length:12},(_,i)=>({angle:i*30, color:planet.color}));
+    setBangs(prev=>[...prev,{
+      id:bangId.current++, x:planet.x, y:planet.y,
+      color:planet.color, particles, rays,
+      emoji:GALAXY_EMOJIS[Math.floor(Math.random()*GALAXY_EMOJIS.length)],
+      born:now
+    }]);
+
+    // Respawn
+    setPlanets(prev=>{const n=[...prev];n[idx]={...n[idx],tapped:true};return n;});
+    setTimeout(()=>setPlanets(prev=>{
+      const n=[...prev];const i=n.findIndex(p=>p.id===planet.id);
+      if(i!==-1)n[i]=spawnPlanet(planetId.current++,n);
+      return n;
+    }),900);
+  },[]);
+
+  const now=Date.now();
+  const stars=useRef(Array.from({length:60},()=>({
+    x:Math.random()*100,y:Math.random()*100,size:1+Math.random()*2,
+    delay:Math.random()*4,dur:1.5+Math.random()*2
+  }))).current;
+
+  return (
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,overflow:'hidden',
+      touchAction:'none',overscrollBehavior:'none'}}>
+      {/* Deep space */}
+      <div style={{position:'absolute',inset:0,
+        background:'radial-gradient(ellipse at 50% 50%, #0A1428 0%, #050A14 100%)'}} />
+      {/* Nebula */}
+      <div style={{position:'absolute',top:'10%',left:'-20%',width:'70%',height:'40%',borderRadius:'50%',
+        background:'radial-gradient(circle,rgba(139,92,246,0.1),transparent 70%)',
+        animation:'shimmerDrift 25s linear infinite',pointerEvents:'none'}} />
+      <div style={{position:'absolute',top:'55%',right:'-15%',width:'50%',height:'30%',borderRadius:'50%',
+        background:'radial-gradient(circle,rgba(236,72,153,0.07),transparent 70%)',
+        animation:'shimmerDrift 30s linear 5s infinite',pointerEvents:'none'}} />
+      {/* Stars */}
+      {stars.map((s,i)=>(
+        <div key={'s'+i} style={{position:'absolute',left:s.x+'%',top:s.y+'%',
+          width:s.size,height:s.size,borderRadius:'50%',background:'#FFF',
+          animation:`sparkle ${s.dur}s ease-in-out ${s.delay}s infinite`,
+          pointerEvents:'none',zIndex:1}} />
+      ))}
+
+      <BackButton onClick={onBack} />
+      <div style={{position:'absolute',top:16,right:16,zIndex:40,
+        fontFamily:"'Fredoka One',cursive",fontSize:32,color:'#FBBF24',
+        textShadow:'0 0 15px rgba(251,191,36,0.5)',
+        transform:scorePop?'scale(1.5)':'scale(1)',transition:'transform 0.15s'}}>
+        ⭐ {score}
+      </div>
+
+      {/* Flash */}
+      {flash&&<div style={{position:'absolute',inset:0,zIndex:45,pointerEvents:'none',
+        background:flash,opacity:flash==='#FFFFFF'?0.4:0.2}} />}
+
+      {/* Planets — real planet emojis */}
+      {planets.map((p,idx)=>{
+        if(p.tapped)return null;
+        const drift=Math.sin((now/1000)/p.speed+p.phase)*15;
+        const driftY=Math.cos((now/1000)/(p.speed*0.7)+p.phase)*10;
+        return (
+          <div key={p.id} role="button" onClick={()=>handleTap(p,idx)}
+            style={{
+              position:'absolute',
+              left:`calc(${p.x}% + ${drift}px)`,top:`calc(${p.y}% + ${driftY}px)`,
+              cursor:'pointer',zIndex:20,textAlign:'center',
+              filter:`drop-shadow(0 0 12px ${p.color}88)`,
+              animation:'float 3s ease-in-out infinite',
+              padding:10,margin:-10
+            }}>
+            <div style={{fontSize:'clamp(50px,14vw,70px)'}}>{p.emoji}</div>
+            <div style={{fontFamily:"'Fredoka One',cursive",fontSize:12,color:'rgba(255,255,255,0.6)',
+              marginTop:-4}}>{p.name}</div>
+          </div>
+        );
+      })}
+
+      {/* Big Bang effects */}
+      <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:50}}>
+        {bangs.map(b=>{
+          const age=(now-b.born)/1100;
+          const ca=Math.min(age,1);
+          return (
+            <React.Fragment key={b.id}>
+              {/* Light rays */}
+              {b.rays.map((r,ri)=>(
+                <div key={ri} style={{
+                  position:'absolute',left:b.x+'%',top:b.y+'%',
+                  width:3,height:Math.min(ca*1.5,1)*250,
+                  background:`linear-gradient(180deg,${b.color}dd,#FFFFFFaa,transparent)`,
+                  transformOrigin:'top center',transform:`rotate(${r.angle}deg)`,
+                  opacity:Math.max(0,1-ca*1.3)
+                }} />
+              ))}
+              {/* Expanding glow */}
+              <div style={{
+                position:'absolute',left:b.x+'%',top:b.y+'%',
+                marginLeft:-50,marginTop:-50,width:100,height:100,borderRadius:'50%',
+                background:`radial-gradient(circle,${b.color}88,transparent 70%)`,
+                transform:`scale(${1+ca*5})`,opacity:Math.max(0,0.7-ca)
+              }} />
+              {/* Shockwave rings */}
+              <div style={{
+                position:'absolute',left:b.x+'%',top:b.y+'%',
+                marginLeft:-40,marginTop:-40,width:80,height:80,borderRadius:'50%',
+                border:`3px solid ${b.color}`,
+                transform:`scale(${1+ca*6})`,opacity:Math.max(0,1-ca*1.5)
+              }} />
+              <div style={{
+                position:'absolute',left:b.x+'%',top:b.y+'%',
+                marginLeft:-30,marginTop:-30,width:60,height:60,borderRadius:'50%',
+                border:'2px solid #FFFFFF',
+                transform:`scale(${1+Math.max(0,ca-0.1)*6})`,opacity:Math.max(0,1-ca*1.5)
+              }} />
+              {/* Particles */}
+              {b.particles.map((p,pi)=>(
+                <div key={pi} style={{
+                  position:'absolute',left:b.x+'%',top:b.y+'%',
+                  marginLeft:p.vx*ca,marginTop:p.vy*ca+ca*ca*50,
+                  width:p.size*(1-ca*0.7),height:p.size*(1-ca*0.7),
+                  borderRadius:'50%',background:p.color,opacity:Math.max(0,1-ca*1.2)
+                }} />
+              ))}
+              {/* Reward emoji */}
+              <div style={{
+                position:'absolute',left:b.x+'%',top:b.y+'%',
+                marginTop:-ca*120,fontSize:60,opacity:Math.max(0,1-ca),
+                transform:`scale(${ca<0.1?ca*15:1.8-ca})`
+              }}>{b.emoji}</div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── SNAKE FOLLOWER ─── */
+
+function SnakeScreen({ onBack }) {
+  const headRef = useRef({x:0,y:0});
+  const segsRef = useRef([]);
+  const foodRef = useRef([]);
+  const dragging = useRef(false);
+  const fingerRef = useRef({x:0,y:0});
+  const [score, setScore] = useState(0);
+  const [scorePop, setScorePop] = useState(false);
+  const [effects, setEffects] = useState([]);
+  const [, setTick] = useState(0);
+  const effectId = useRef(0);
+  const inited = useRef(false);
+
+  function spawnFood() {
+    const colors = ['#FFFF00','#FFA500','#FF69B4','#00BFFF','#32CD32','#FFD700'];
+    const emojis = ['⭐','🌟','💫','✨','🍎','🍬'];
+    return {
+      x: 40 + Math.random()*(window.innerWidth-80),
+      y: 60 + Math.random()*(window.innerHeight*0.6),
+      color: colors[Math.floor(Math.random()*colors.length)],
+      emoji: emojis[Math.floor(Math.random()*emojis.length)],
+      id: Date.now()+Math.random()
+    };
+  }
+
+  useEffect(() => {
+    const cx = window.innerWidth/2;
+    const cy = window.innerHeight*0.65;
+    headRef.current = {x:cx,y:cy};
+    const s = [];
+    for(let i=0;i<3;i++) s.push({x:cx,y:cy+(i+1)*18});
+    segsRef.current = s;
+    foodRef.current = [spawnFood(), spawnFood()];
+    inited.current = true;
+
+    // Food spawn timer
+    const foodTimer = setInterval(()=>{
+      if(foodRef.current.length<5) foodRef.current.push(spawnFood());
+    },3000);
+
+    let raf;
+    const loop = () => {
+      const head = headRef.current;
+      if(dragging.current) {
+        head.x += (fingerRef.current.x - head.x)*0.15;
+        head.y += (fingerRef.current.y - head.y)*0.15;
+      }
+      // Body chain follow
+      let prev = head;
+      for(let i=0;i<segsRef.current.length;i++){
+        const s = segsRef.current[i];
+        const dx = prev.x-s.x, dy = prev.y-s.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        const spacing = 16;
+        if(dist>spacing){
+          const r = spacing/dist;
+          s.x = prev.x - dx*r;
+          s.y = prev.y - dy*r;
+        }
+        prev = s;
+      }
+      // Check food collision while dragging
+      if(dragging.current){
+        for(let i=foodRef.current.length-1;i>=0;i--){
+          const f = foodRef.current[i];
+          const dx=head.x-f.x, dy=head.y-f.y;
+          if(Math.sqrt(dx*dx+dy*dy)<35){
+            // Eat!
+            foodRef.current.splice(i,1);
+            getAudioContext();
+            playChime();
+            // Add body segment
+            const tail = segsRef.current[segsRef.current.length-1];
+            segsRef.current.push({x:tail.x,y:tail.y+16});
+            // Particles
+            const now=Date.now();
+            const newFx=[];
+            for(let j=0;j<20;j++){
+              const angle=Math.random()*Math.PI*2;
+              const speed=50+Math.random()*100;
+              newFx.push({id:effectId.current++,type:'p',x:f.x,y:f.y,
+                vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,
+                color:['#FFD700','#FF69B4','#00BFFF','#FECA57','#FF6B6B','#FFFFFF'][Math.floor(Math.random()*6)],
+                size:5+Math.random()*8,born:now,dur:600});
+            }
+            newFx.push({id:effectId.current++,type:'emoji',x:f.x,y:f.y,
+              emoji:['🎉','✨','😋','⭐'][Math.floor(Math.random()*4)],born:now,dur:800});
+            setEffects(prev=>[...prev,...newFx]);
+            setScore(prev=>prev+1);
+            setScorePop(true);
+            setTimeout(()=>setScorePop(false),300);
+          }
+        }
+      }
+      setTick(n=>n+1);
+      raf=requestAnimationFrame(loop);
+    };
+    raf=requestAnimationFrame(loop);
+    return()=>{cancelAnimationFrame(raf);clearInterval(foodTimer);};
+  },[]);
+
+  // Cleanup effects
+  useEffect(()=>{
+    const t=setInterval(()=>setEffects(prev=>prev.filter(e=>Date.now()-e.born<e.dur)),500);
+    return()=>clearInterval(t);
+  },[]);
+
+  const onDown=useCallback((e)=>{
+    const cx=e.touches?e.touches[0].clientX:e.clientX;
+    const cy=e.touches?e.touches[0].clientY:e.clientY;
+    const h=headRef.current;
+    if(Math.sqrt((cx-h.x)**2+(cy-h.y)**2)<60){
+      dragging.current=true;
+      fingerRef.current={x:cx,y:cy};
+    }
+  },[]);
+  const onMove=useCallback((e)=>{
+    if(!dragging.current)return;
+    e.preventDefault();
+    const cx=e.touches?e.touches[0].clientX:e.clientX;
+    const cy=e.touches?e.touches[0].clientY:e.clientY;
+    fingerRef.current={x:cx,y:cy};
+  },[]);
+  const onUp=useCallback(()=>{dragging.current=false;},[]);
+
+  if(!inited.current)return null;
+  const head=headRef.current;
+  const segs=segsRef.current;
+  const food=foodRef.current;
+  const now=Date.now();
+
+  return(
+    <div data-game-lock style={{position:'fixed',inset:0,zIndex:10,overflow:'hidden',
+      touchAction:'none',overscrollBehavior:'none',background:'#ADD8E6'}}
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+      onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}>
+
+      <BackButton onClick={onBack} />
+      <div style={{position:'absolute',top:16,right:16,zIndex:40,
+        fontFamily:"'Fredoka One',cursive",fontSize:32,color:'#FF69B4',
+        textShadow:'0 2px 8px rgba(0,0,0,0.15)',
+        transform:scorePop?'scale(1.5)':'scale(1)',transition:'transform 0.15s'}}>
+        🐍 {score}
+      </div>
+
+      {/* Hint */}
+      {score===0&&!dragging.current&&(
+        <div style={{position:'absolute',bottom:'28%',left:'50%',transform:'translateX(-50%)',
+          zIndex:30,fontFamily:"'Fredoka One',cursive",fontSize:'clamp(16px,4vw,20px)',
+          color:'white',textShadow:'0 2px 8px rgba(0,0,0,0.3)',textAlign:'center',
+          animation:'pulse 2s ease-in-out infinite',
+          background:'rgba(255,105,180,0.5)',padding:'10px 24px',borderRadius:24}}>
+          Hold the snake and drag! 🐍
+        </div>
+      )}
+
+      {/* Food items */}
+      {food.map(f=>(
+        <div key={f.id} style={{
+          position:'absolute',left:f.x-20,top:f.y-20,
+          width:40,height:40,fontSize:32,textAlign:'center',lineHeight:'40px',
+          filter:`drop-shadow(0 0 10px ${f.color}88)`,
+          animation:'float 2s ease-in-out infinite',zIndex:15
+        }}>{f.emoji}</div>
+      ))}
+
+      {/* Snake body */}
+      {segs.map((s,i)=>{
+        const total=segs.length;
+        const ratio=1-((i+1)/(total+1))*0.5;
+        const size=Math.max(12,28*ratio);
+        const green=Math.max(100,200-Math.round(i*15));
+        return(
+          <div key={i} style={{
+            position:'absolute',
+            left:s.x-size/2,top:s.y-size/2,
+            width:size,height:size,
+            borderRadius:'50%',
+            background:`rgb(0,${green},30)`,
+            boxShadow:'0 2px 6px rgba(0,0,0,0.12)',
+            zIndex:18-i
+          }} />
+        );
+      })}
+
+      {/* Snake head */}
+      <div style={{
+        position:'absolute',left:head.x-22,top:head.y-22,
+        width:44,height:44,borderRadius:'50%',
+        background:'radial-gradient(circle at 35% 30%, #90FF90, #00FF41 50%, #00CC33)',
+        boxShadow:'0 3px 10px rgba(0,0,0,0.15), 0 0 20px rgba(0,255,65,0.3)',
+        zIndex:20
+      }}>
+        {/* Eyes */}
+        <div style={{position:'absolute',top:11,left:8,width:11,height:11,borderRadius:'50%',background:'white',boxShadow:'inset 0 1px 3px rgba(0,0,0,0.1)'}}>
+          <div style={{position:'absolute',top:3,left:4,width:5,height:5,borderRadius:'50%',background:'#333'}} />
+          <div style={{position:'absolute',top:2,left:5,width:2,height:2,borderRadius:'50%',background:'white'}} />
+        </div>
+        <div style={{position:'absolute',top:11,right:8,width:11,height:11,borderRadius:'50%',background:'white',boxShadow:'inset 0 1px 3px rgba(0,0,0,0.1)'}}>
+          <div style={{position:'absolute',top:3,left:4,width:5,height:5,borderRadius:'50%',background:'#333'}} />
+          <div style={{position:'absolute',top:2,left:5,width:2,height:2,borderRadius:'50%',background:'white'}} />
+        </div>
+        {/* Rosy cheeks */}
+        <div style={{position:'absolute',bottom:9,left:3,width:9,height:6,borderRadius:'50%',background:'#FF69B4',opacity:0.35}} />
+        <div style={{position:'absolute',bottom:9,right:3,width:9,height:6,borderRadius:'50%',background:'#FF69B4',opacity:0.35}} />
+        {/* Smile */}
+        <div style={{position:'absolute',bottom:7,left:'50%',transform:'translateX(-50%)',
+          width:14,height:7,borderRadius:'0 0 7px 7px',border:'2px solid #006600',borderTop:'none'}} />
+        {/* Tongue */}
+        <div style={{position:'absolute',bottom:2,left:'50%',transform:'translateX(-50%)',
+          width:6,height:8,borderRadius:'0 0 3px 3px',background:'#FF4444'}} />
+      </div>
+
+      {/* Effects */}
+      <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:50}}>
+        {effects.map(e=>{
+          const age=(now-e.born)/e.dur;const ca=Math.min(age,1);
+          if(e.type==='p'){
+            return(<div key={e.id} style={{
+              position:'absolute',left:e.x+e.vx*ca,top:e.y+e.vy*ca+ca*ca*40,
+              width:e.size*(1-ca*0.6),height:e.size*(1-ca*0.6),
+              borderRadius:'50%',background:e.color,opacity:1-ca
+            }} />);
+          }
+          if(e.type==='emoji'){
+            return(<div key={e.id} style={{
+              position:'absolute',left:e.x-16,top:e.y-ca*70,
+              fontSize:36,opacity:1-ca,
+              transform:`scale(${ca<0.1?ca*12:1.4-ca*0.4})`
+            }}>{e.emoji}</div>);
+          }
+          return null;
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN APP ─── */
+function App() {
+  const [screen, setScreen] = useState('splash');
+  const [cartoonIdx, setCartoonIdx] = useState(0);
+
+  const navigate = useCallback((s) => {
+    stopLullaby();
+    setScreen(s);
+  }, []);
+
+  const goCategory = useCallback(() => {
+    setScreen('category');
+  }, []);
+
+  const goHome = useCallback(() => {
+    setScreen('home');
+  }, []);
+
+  return (
+    <div style={{width:'100%',height:'100%',overflow:'hidden',position:'relative'}}>
+      <InjectStyles />
+      <AnimatedBG />
+      <SparkleLayer />
+      <ShimmerOverlay />
+
+      <div style={{
+        position:'relative',zIndex:10,width:'100%',height:'100%',
+        maxWidth:430,margin:'0 auto',overflowY:'auto',overflowX:'hidden'
+      }}>
+        {screen === 'splash' && <SplashScreen onDone={() => setScreen('photo')} />}
+        {screen === 'photo' && <PhotoSplash onDone={() => setScreen('category')} />}
+        {screen === 'category' && <CategoryMenu onGames={() => setScreen('home')} onCartoons={() => setScreen('cartoon-browser')} />}
+        {screen === 'home' && <HomeScreen onNavigate={navigate} onBack={goCategory} />}
+        {screen === 'cartoon-browser' && <CartoonBrowser onSelect={(i) => { setCartoonIdx(i); setScreen('cartoons'); }} onBack={goCategory} />}
+        {screen === 'piano' && <PianoScreen onBack={goHome} />}
+        {screen === 'bubbles' && <BubbleScreen onBack={goHome} />}
+        {screen === 'numbers' && <NumbersScreen onBack={goHome} />}
+        {screen === 'draw' && <DrawScreen onBack={goHome} />}
+        {screen === 'cartoons' && <CartoonScreen onBack={() => setScreen('cartoon-browser')} startIdx={cartoonIdx} />}
+        {screen === 'shapes' && <ShapePoppers onBack={goHome} />}
+        {screen === 'mamino' && <MaminoScreen onBack={goHome} />}
+        {screen === 'garden' && <GardenScreen onBack={goHome} />}
+        {screen === 'galaxy' && <GalaxyScreen onBack={goHome} />}
+        {screen === 'snake' && <SnakeScreen onBack={goHome} />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
