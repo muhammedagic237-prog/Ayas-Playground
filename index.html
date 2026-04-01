@@ -1718,22 +1718,24 @@ function DrawScreen({ onBack }) {
 
 /* ─── CARTOONS SCREEN — TikTok-style vertical swipe ─── */
 const CARTOONS = [
-  {id:'75p-N9YKqNo',title:'CoComelon - Wheels on the Bus'},
-  {id:'e_04ZrNroTo',title:'Pinkfong - Baby Shark Dance'},
-  {id:'7mR81x2Fk7g',title:'Hey Bear - Dancing Fruit 1 Hour'},
-  {id:'NPCgeuIPGTI',title:'Hey Bear - Funky Veggies Dance Party'},
-  {id:'ALaQvK7KZOY',title:'Hey Bear - Colors and Counting'},
-  {id:'0uZ4I3o-5eY',title:'CoComelon - Twinkle Twinkle Little Star'},
-  {id:'kAxdvigZtw8',title:'Hey Bear - Best of Fruit & Veggies'},
-  {id:'w08k0bq4O4o',title:'Hey Bear - Rainbow Summertime'},
-  {id:'5HOTTORooSA',title:'CoComelon - 12345 Once I Caught a Fish'},
-  {id:'6vR4LzZuzxc',title:'Hey Bear - Avocadosaurus Dance Party'},
-  {id:'b7-C8Mzl7gc',title:'Hey Bear - Dancing Fruit & Veggies Mini'},
-  {id:'WlO2G0HzBPE',title:'CoComelon - Yes Yes Get Dressed Song'},
-  {id:'0jW1XKc_e1o',title:'Choo-Choo - Leo & the Train'},
-  {id:'hbTWlsyxHuA',title:'Choo-Choo Train Cartoons 30min'},
-  {id:'guYjvSHbXms',title:'Choo-Choo Train Song'},
-  {id:'dZUq8hpKICY',title:'Choo-Choo - Find the Animal'},
+  {src:'https://archive.org/embed/BigBuckBunny_124',title:'Big Buck Bunny'},
+  {src:'https://archive.org/embed/Caminandes1LlamaDrama',title:'Caminandes: Llama Drama'},
+  {src:'https://archive.org/embed/Caminandes2GranDillama',title:'Caminandes: Gran Dillama'},
+  {src:'https://archive.org/embed/CaminandesLlamigos',title:'Caminandes: Llamigos'},
+  {src:'https://archive.org/embed/SteamboatWillie',title:'Mickey Mouse: Steamboat Willie'},
+  {src:'https://archive.org/embed/TheFriendlyGhost',title:'Casper the Friendly Ghost'},
+  {src:'https://archive.org/embed/the_big_bad_wolf',title:'The Big Bad Wolf'},
+  {src:'https://archive.org/embed/Popeye_forPresident',title:'Popeye for President'},
+  {src:'https://archive.org/embed/PopeyeAliBaba',title:'Popeye Meets Ali Baba'},
+  {src:'https://archive.org/embed/popeye_private_eye_popeye',title:'Private Eye Popeye'},
+  {src:'https://archive.org/embed/ACornyConcerto1943BugsBunny',title:'Bugs Bunny: A Corny Concerto'},
+  {src:'https://archive.org/embed/woody_woodpecker_pantry_panic',title:'Woody Woodpecker: Pantry Panic'},
+  {src:'https://archive.org/embed/gullivers_travels1939',title:'Gullivers Travels'},
+  {src:'https://archive.org/embed/Jolly_Fish_1932',title:'Tom & Jerry: Jolly Fish'},
+  {src:'https://player.vimeo.com/video/359281775',title:'Maestro'},
+  {src:'https://player.vimeo.com/video/59230893',title:'Premier Automne (First Fall)'},
+  {src:'https://player.vimeo.com/video/271765903',title:'Flipped'},
+  {src:'https://player.vimeo.com/video/348472543',title:'(OO) - Colorful Dreams'},
 ];
 
 function CartoonScreen({ onBack, startIdx = 0 }) {
@@ -1757,10 +1759,10 @@ function CartoonScreen({ onBack, startIdx = 0 }) {
       {/* Video player */}
       <div style={{flex:1,position:'relative',overflow:'hidden'}}>
         <iframe
-          key={video.id}
-          src={`https://www.youtube.com/embed/${video.id}?autoplay=1&mute=0&playsinline=1&rel=0&modestbranding=1&controls=1`}
+          key={video.src}
+          src={video.src}
           style={{width:'100%',height:'100%',border:'none'}}
-          allow="autoplay; encrypted-media; picture-in-picture"
+          allow="autoplay; encrypted-media; fullscreen"
           allowFullScreen
         />
 
@@ -2223,7 +2225,7 @@ function CartoonBrowser({ onSelect, onBack }) {
         gap:12
       }}>
         {CARTOONS.map((c, i) => (
-          <div key={c.id} role="button" onClick={() => onSelect(i)}
+          <div key={c.src} role="button" onClick={() => onSelect(i)}
             style={{
               background:'linear-gradient(135deg, rgba(135,206,235,0.3), rgba(174,214,241,0.3))',
               borderRadius:20,padding:14,cursor:'pointer',
@@ -2237,7 +2239,7 @@ function CartoonBrowser({ onSelect, onBack }) {
             onMouseUp={e => e.currentTarget.style.transform='scale(1)'}
           >
             <span style={{fontSize:36,marginBottom:6}}>
-              {c.title.includes('Hey Bear') ? '🐻' : c.title.includes('Pinkfong') ? '🦈' : c.title.includes('Choo') ? '🚂' : '👶'}
+              {c.title.includes('Buck Bunny') ? '🐰' : c.title.includes('Caminandes') ? '🦙' : c.title.includes('Mickey') || c.title.includes('Steamboat') ? '🐭' : c.title.includes('Casper') ? '👻' : c.title.includes('Popeye') ? '💪' : c.title.includes('Bugs') ? '🐰' : c.title.includes('Woody') ? '🐦' : c.title.includes('Gulliver') ? '🚢' : c.title.includes('Tom') ? '🐱' : c.title.includes('Wolf') ? '🐺' : '🎬'}
             </span>
             <span style={{
               fontFamily:"'Nunito',sans-serif",fontSize:'clamp(11px,3vw,14px)',
