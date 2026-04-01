@@ -1757,7 +1757,7 @@ function CartoonScreen({ onBack, startIdx = 0 }) {
       <BackButton onClick={onBack} />
 
       {/* Video player */}
-      <div style={{flex:1,position:'relative',overflow:'hidden'}}>
+      <div style={{flex:1,overflow:'hidden'}}>
         <iframe
           key={video.src}
           src={video.src}
@@ -1765,37 +1765,6 @@ function CartoonScreen({ onBack, startIdx = 0 }) {
           allow="autoplay; encrypted-media; fullscreen"
           allowFullScreen
         />
-
-        {/* Previous button — left side */}
-        {currentIdx > 0 && (
-          <div role="button"
-            onClick={goPrev}
-            style={{
-              position:'absolute',left:8,top:'50%',transform:'translateY(-50%)',zIndex:25,
-              width:50,height:50,borderRadius:'50%',cursor:'pointer',
-              background:'linear-gradient(135deg,#E6CCFF,#FFB6C1)',
-              display:'flex',alignItems:'center',justifyContent:'center',
-              boxShadow:'0 4px 15px rgba(0,0,0,0.4)',
-              fontSize:22
-            }}>
-            ▲
-          </div>
-        )}
-
-        {/* Next button — right side */}
-        <div role="button"
-          onClick={goNext}
-          style={{
-            position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',zIndex:25,
-            width:50,height:50,borderRadius:'50%',cursor:'pointer',
-            background:'linear-gradient(135deg,#FF69B4,#A55EEA)',
-            display:'flex',alignItems:'center',justifyContent:'center',
-            boxShadow:'0 4px 15px rgba(0,0,0,0.4)',
-            fontSize:22,
-            animation:'pulse 2s ease-in-out infinite'
-          }}>
-          ▼
-        </div>
       </div>
 
       {/* Bottom control bar */}
