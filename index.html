@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<title>Aria's Code</title>
+<title>Aya's Playground</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -487,7 +487,7 @@ function SplashScreen({ onDone }) {
           letterSpacing:'2px',
           WebkitTextStroke:'1px rgba(255,255,255,0.2)'
         }}>
-          Aria's Code
+          Aya's Playground
         </div>
         <div style={{
           fontFamily:"'Dancing Script',cursive",fontSize:'clamp(32px,8vw,48px)',
@@ -497,14 +497,14 @@ function SplashScreen({ onDone }) {
           marginTop:6,
           animation:'fadeIn 0.8s ease 0.4s both, float 3s ease-in-out 1.2s infinite'
         }}>
-          👑 Princess Aria 👑
+          👑 Princess Aya 👑
         </div>
         <div style={{
           fontFamily:"'Nunito',sans-serif",fontSize:'clamp(14px,3.5vw,20px)',
           color:COLORS.skyBlue, fontStyle:'italic', marginTop:12,
           animation:'fadeIn 0.6s ease 0.8s both'
         }}>
-          ✨ A Magical World for Aria ✨
+          ✨ A Magical World for Aya ✨
         </div>
       </div>
       <div style={{
@@ -528,7 +528,7 @@ function SplashScreen({ onDone }) {
   );
 }
 
-/* ─── PHOTO SPLASH — Aria's photo for 2s ─── */
+/* ─── PHOTO SPLASH — Aya's photo for 2s ─── */
 function PhotoSplash({ onDone }) {
   const [fadeOut, setFadeOut] = useState(false);
 
@@ -553,7 +553,7 @@ function PhotoSplash({ onDone }) {
         animation:'titleEntrance 0.8s ease-out forwards',
         zIndex:10
       }}>
-        <img src="aria.jpg" alt="Princess Aria"
+        <img src="aria.jpg" alt="Princess Aya"
           style={{width:'100%',height:'100%',objectFit:'cover'}} />
       </div>
       <div style={{
@@ -563,7 +563,7 @@ function PhotoSplash({ onDone }) {
         marginTop:16,zIndex:10,
         animation:'fadeIn 0.6s ease 0.3s both'
       }}>
-        👑 Princess Aria 👑
+        👑 Princess Aya 👑
       </div>
 
       {/* 3 cute pink flowers rising from bottom */}
@@ -660,7 +660,7 @@ function HomeScreen({ onNavigate, onBack }) {
         textShadow:'0 0 15px rgba(255,105,180,0.4), 1px 1px 0 #E6CCFF',
         marginBottom:20,marginTop: onBack ? 30 : 0
       }}>
-        🎮 Aria's Games 🌸
+        🎮 Aya's Games 🌸
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:24,width:'100%',maxWidth:380}}>
         {cards.map((c,i) => (
@@ -988,7 +988,7 @@ function PianoScreen({ onBack }) {
       <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10,zIndex:10}}>
         <div style={{fontFamily:"'Fredoka One',cursive",fontSize:28,color:'#FFD700',
           textShadow:'0 0 15px rgba(255,215,0,0.5), 0 0 30px rgba(255,105,180,0.3)'}}>
-          🎹 Aria's Piano
+          🎹 Aya's Piano
         </div>
         <div role="button"
           onClick={autoPlaySong}
@@ -1243,7 +1243,7 @@ function BubbleScreen({ onBack }) {
         textAlign:'center',
         lineHeight:1.2
       }}>
-        Aria's<br/>Bubbles
+        Aya's<br/>Bubbles
       </div>
 
       <Particles particles={particles} />
@@ -1297,7 +1297,7 @@ function BubbleScreen({ onBack }) {
         fontFamily:"'Fredoka One',cursive",fontSize:22,color:'white',
         boxShadow:'0 4px 15px rgba(255,105,180,0.4)',
       }}>
-        <span>🫧 Aria popped: </span>
+        <span>🫧 Aya popped: </span>
         <span style={{
           display:'inline-block',
           animation: scoreBounce ? 'scoreBounce 0.3s ease' : 'none'
@@ -1359,7 +1359,7 @@ function NumbersScreen({ onBack }) {
     if (currentNum >= 20) {
       setTimeout(() => {
         setCompleted(true);
-        speakNumber("Great! Aria knows her numbers!");
+        speakNumber("Great! Aya knows her numbers!");
         // confetti rain
         const newConfetti = Array.from({length:100}, () => ({
           id: confettiId.current++,
@@ -1408,7 +1408,7 @@ function NumbersScreen({ onBack }) {
           fontFamily:"'Fredoka One',cursive",fontSize:'clamp(32px,8vw,48px)',
           color:'#FF69B4',textShadow:'0 0 20px rgba(255,105,180,0.5)',
           marginTop:20,zIndex:10
-        }}>Great! Aria Knows Her Numbers! 🎉</div>
+        }}>Great! Aya Knows Her Numbers! 🎉</div>
         <div role="button"
           onClick={resetGame}
           style={{
@@ -2165,7 +2165,7 @@ function CategoryMenu({ onGames, onCartoons }) {
           fontFamily:"'Dancing Script',cursive",fontSize:'clamp(27px,7.5vw,36px)',
           fontWeight:700,color:'rgba(255,255,255,0.85)',
           textShadow:'0 2px 8px rgba(0,0,0,0.15)'
-        }}>With love to Princess Aria 💖</div>
+        }}>With love to Princess Aya 💖</div>
       </div>
 
       {/* Diagonal split — Cartoons (bottom-right triangle) */}
@@ -2218,7 +2218,7 @@ function CartoonBrowser({ onSelect, onBack }) {
         color:'#FF69B4',textShadow:'0 0 10px rgba(255,105,180,0.3)',
         textAlign:'center',marginTop:50,marginBottom:20
       }}>
-        📺 Aria's Cartoons
+        📺 Aya's Cartoons
       </div>
       <div style={{
         display:'grid',gridTemplateColumns:'repeat(2, 1fr)',

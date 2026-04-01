@@ -1,4 +1,4 @@
-# Aria's Code 🌸
+# Aya's Playground 🌸
 
 A magical, premium toddler app built with React — designed for baby girls with a beautiful baby pink and baby blue theme.
 
