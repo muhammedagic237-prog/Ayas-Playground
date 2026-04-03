@@ -2085,75 +2085,53 @@ function CategoryMenu({ onGames, onCartoons }) {
   useEffect(() => { startLullaby(); return stopLullaby; }, []);
 
   return (
-    <div style={{position:'relative',zIndex:10,width:'100%',height:'100vh',overflow:'hidden'}}>
-      {/* Diagonal split — Games (top-left triangle) */}
-      <div role="button" onClick={onGames}
+    <div style={{position:'relative',zIndex:10,width:'100%',height:'100vh',overflow:'hidden',touchAction:'manipulation'}}>
+      {/* Games — top half */}
+      <div role="button"
+        onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); onGames(); }}
+        onClick={onGames}
         style={{
-          position:'absolute',top:0,left:0,width:'100%',height:'100%',
-          clipPath:'polygon(0 0, 100% 0, 0 100%)',
+          position:'absolute',top:0,left:0,width:'100%',height:'50%',
           background:'linear-gradient(150deg, #FF69B4, #A55EEA)',
-          cursor:'pointer',
-          transition:'filter 0.2s',zIndex:2
-        }}
-        onMouseDown={e => e.currentTarget.style.filter='brightness(1.15)'}
-        onMouseUp={e => e.currentTarget.style.filter='brightness(1)'}
-      >
-        <div style={{
-          position:'absolute',top:'22%',left:'18%',textAlign:'center'
+          cursor:'pointer',zIndex:2,
+          display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',
+          borderBottom:'3px solid rgba(255,255,255,0.5)'
         }}>
-          <div style={{fontSize:'clamp(52px,14vw,72px)',animation:'float 3s ease-in-out infinite'}}>🎮</div>
-          <div style={{
-            fontFamily:"'Fredoka One',cursive",fontSize:'clamp(26px,7vw,38px)',
-            color:'white',textShadow:'0 3px 15px rgba(0,0,0,0.25)',
-            marginTop:6
-          }}>Games</div>
-          <div style={{
-            fontFamily:"'Nunito',sans-serif",fontSize:13,color:'rgba(255,255,255,0.8)',
-            marginTop:4
-          }}>🎹 🫧 🔢 🎨 ⭐</div>
-        </div>
         <div style={{
           position:'absolute',top:'6%',left:'5%',
-          fontFamily:"'Dancing Script',cursive",fontSize:'clamp(27px,7.5vw,36px)',
+          fontFamily:"'Dancing Script',cursive",fontSize:'clamp(20px,5vw,28px)',
           fontWeight:700,color:'rgba(255,255,255,0.85)',
           textShadow:'0 2px 8px rgba(0,0,0,0.15)'
         }}>With love to Princess Aya 💖</div>
-      </div>
-
-      {/* Diagonal split — Cartoons (bottom-right triangle) */}
-      <div role="button" onClick={onCartoons}
-        style={{
-          position:'absolute',top:0,left:0,width:'100%',height:'100%',
-          clipPath:'polygon(100% 0, 100% 100%, 0 100%)',
-          background:'linear-gradient(150deg, #87CEEB, #0ABDE3)',
-          cursor:'pointer',
-          transition:'filter 0.2s',zIndex:2
-        }}
-        onMouseDown={e => e.currentTarget.style.filter='brightness(1.15)'}
-        onMouseUp={e => e.currentTarget.style.filter='brightness(1)'}
-      >
+        <div style={{fontSize:'clamp(52px,14vw,72px)',animation:'float 3s ease-in-out infinite'}}>🎮</div>
         <div style={{
-          position:'absolute',bottom:'22%',right:'18%',textAlign:'center'
-        }}>
-          <div style={{fontSize:'clamp(52px,14vw,72px)',animation:'float 3s ease-in-out 0.5s infinite'}}>📺</div>
-          <div style={{
-            fontFamily:"'Fredoka One',cursive",fontSize:'clamp(26px,7vw,38px)',
-            color:'white',textShadow:'0 3px 15px rgba(0,0,0,0.25)',
-            marginTop:6
-          }}>Cartoons</div>
-          <div style={{
-            fontFamily:"'Nunito',sans-serif",fontSize:13,color:'rgba(255,255,255,0.8)',
-            marginTop:4
-          }}>🎬 Baby Shows 🍿</div>
+          fontFamily:"'Fredoka One',cursive",fontSize:'clamp(28px,8vw,42px)',
+          color:'white',textShadow:'0 3px 15px rgba(0,0,0,0.25)',marginTop:6
+        }}>Games</div>
+        <div style={{fontFamily:"'Nunito',sans-serif",fontSize:14,color:'rgba(255,255,255,0.8)',marginTop:6}}>
+          🎹 🫧 🔢 🎨 ⭐ 🐍
         </div>
       </div>
 
-      {/* Diagonal line glow */}
-      <div style={{
-        position:'absolute',top:0,left:0,width:'100%',height:'100%',
-        background:'linear-gradient(135deg, transparent 48.5%, rgba(255,255,255,0.5) 49.5%, rgba(255,255,255,0.5) 50.5%, transparent 51.5%)',
-        pointerEvents:'none',zIndex:3
-      }} />
+      {/* Cartoons — bottom half */}
+      <div role="button"
+        onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); onCartoons(); }}
+        onClick={onCartoons}
+        style={{
+          position:'absolute',bottom:0,left:0,width:'100%',height:'50%',
+          background:'linear-gradient(150deg, #87CEEB, #0ABDE3)',
+          cursor:'pointer',zIndex:2,
+          display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column'
+        }}>
+        <div style={{fontSize:'clamp(52px,14vw,72px)',animation:'float 3s ease-in-out 0.5s infinite'}}>📺</div>
+        <div style={{
+          fontFamily:"'Fredoka One',cursive",fontSize:'clamp(28px,8vw,42px)',
+          color:'white',textShadow:'0 3px 15px rgba(0,0,0,0.25)',marginTop:6
+        }}>Cartoons</div>
+        <div style={{fontFamily:"'Nunito',sans-serif",fontSize:14,color:'rgba(255,255,255,0.8)',marginTop:6}}>
+          🎬 Baby Shows 🍿
+        </div>
+      </div>
     </div>
   );
 }
